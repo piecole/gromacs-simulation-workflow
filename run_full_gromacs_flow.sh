@@ -184,8 +184,24 @@ else
     # Change to the run directory.
     cd "$run_dir" || exit 1
 
-    # Run pdb2gmx.
-    echo "1 0 1 0 1 0" | gmx pdb2gmx -f struc_clean.pdb \
+    # Function to count unique chains and generate pdb2gmx input
+    generate_pdb2gmx_input() {
+        # Count unique chains (excluding HETATM and water)
+        num_chains=$(grep "^ATOM" struc_clean.pdb | awk '{print $5}' | sort -u | wc -l)
+        
+        # Generate input string: "1 0" for each chain
+        input_string=""
+        for ((i=1; i<=$num_chains; i++)); do
+            input_string+="1 0 "
+        done
+        
+        # Remove trailing space
+        input_string=$(echo "$input_string" | sed 's/ *$//')
+        echo "$input_string"
+    }
+
+    # Run pdb2gmx with dynamic input based on chain count
+    generate_pdb2gmx_input | gmx pdb2gmx -f struc_clean.pdb \
                                    -o struc_processed.gro \
                                    -p topol.top \
                                    -water spce \
