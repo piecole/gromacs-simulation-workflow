@@ -1,0 +1,36 @@
+# GROMACS output files
+*.xtc
+*.trr
+*.cpt
+*.edr
+*.gro
+*.pdb
+!struc_clean.pdb
+!pepd_p53.pdb
+
+# GROMACS index files
+*.ndx
+!restraint.ndx_input
+
+# GROMACS energy files
+*.xvg
+
+# GROMACS log files
+*.log
+
+# Temporary files
+*~
+*.swp
+*.swo
+
+# Force field files (these should be installed separately)
+charmm36-jul2022.ff/
+
+# Large output files
+md_0_1_centered.pdb
+md_0_1.pdb
+fixed_exported_without_disulphide.pdb
+exported_without_disulphide.pdb
+exported_with_disulphide.pdb
+restraint.ndx
+index.ndx 
