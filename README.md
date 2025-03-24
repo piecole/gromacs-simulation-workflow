@@ -18,7 +18,7 @@ This repository contains a SLURM-based workflow script for running GROMACS molec
 ## Usage
 
 ```bash
-sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]
+sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]
 ```
 
 ### Arguments
@@ -27,6 +27,8 @@ sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom
 - `-r`: Resume flag to skip to production run
 - `-m`: Specify a custom production MDP file
 - `-n`: Specify a custom index file
+- `-s`: Stop the process just before pdb2gmx
+- `-g gro_file`: Continue the process from after pdb2gmx with the specified .gro file
 
 ## Important Notes
 
@@ -61,4 +63,19 @@ sbatch run_full_gromacs_flow.sh protein_A run1 -m custom_md.mdp -n custom_index.
 
 # Resuming from production run
 sbatch run_full_gromacs_flow.sh protein_A run1 -r
-``` 
+
+# Stopping before pdb2gmx
+sbatch run_full_gromacs_flow.sh protein_A run1 -s
+
+# Continuing with a custom GRO file
+sbatch run_full_gromacs_flow.sh protein_A run1 -g path/to/custom.gro
+```
+
+## Workflow Control
+
+The script provides several options to control the workflow:
+
+1. **Complete Workflow**: By default, runs the entire process from PDB to production.
+2. **Pre-Processing Only**: Use the `-s` flag to prepare the directory and stop before pdb2gmx, useful when you need to do mandual gmx2pdb such as specifying disulphide bonds.
+3. **Post-Processing with Custom Structure**: Use the `-g` flag with a .gro file to skip pdb2gmx and continue with your pre-processed structure.
+4. **Resume Production**: Use the `-r` flag to skip straight to the production run phase. Most useful if compute time runs out before simulation finishes
