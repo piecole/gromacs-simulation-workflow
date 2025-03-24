@@ -60,7 +60,7 @@ input_file=$1
 indicator=$2
 shift 2
 
-# Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s 'CYS A 58 CYS B 158']
+# Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]
 production_mdp="md.mdp"
 index_file="index.ndx"   # Default .ndx file
 resume_flag=false
@@ -76,11 +76,8 @@ while getopts "rm:n:s:" opt; do
         n)
             index_file="$OPTARG"
             ;;
-        s)
-            disulfide_bonds+=("$OPTARG")
-            ;;
         \?)
-            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s 'CYS A 58 CYS B 158']"
+            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]"
             exit 1
             ;;
     esac
@@ -127,7 +124,7 @@ if [ "$resume_flag" = true ]; then
     fi
 else
     echo "No resume flag detected. Running full pre-production setup."
-    
+
     # Make the run directory if it doesnt exist, and copy mdp files and index file into it.
     set_up_folder
 
@@ -138,75 +135,18 @@ else
     fi
     # Clean up: remove HOH lines from the pdb file and copy it to the run directory.
     grep -v HOH "$input_file.pdb" > "$run_dir/struc_clean.pdb"
-    
-    # Add disulfide bond records to the PDB file if specified
-    if [ ${#disulfide_bonds[@]} -gt 0 ]; then
-        echo "Adding ${#disulfide_bonds[@]} disulfide bond(s) to PDB file"
-        # Create a temporary file with SSBOND records
-        tmp_file=$(mktemp)
-        bond_count=1
-        
-          # Find line number of first ATOM or HETATM entry
-          first_atom_line=$(grep -n "^ATOM\|^HETATM" "$run_dir/struc_clean.pdb" | head -1 | cut -d: -f1)
-          
-          if [ -n "$first_atom_line" ]; then
-               # Copy header records
-               head -n $((first_atom_line - 1)) "$run_dir/struc_clean.pdb" > "$tmp_file"
-               
-               # Add each disulfide bond record
-               for bond in "${disulfide_bonds[@]}"; do
-               # Parse the bond specification
-               read -r res1 chain1 num1 res2 chain2 num2 <<< "$bond"
-               echo "SSBOND   $bond_count $res1 $chain1   $num1    $res2 $chain2  $num2" >> "$tmp_file"
-               bond_count=$((bond_count + 1))
-               done
-               
-               # Add the ATOM/HETATM lines and the rest of the file
-               tail -n +$first_atom_line "$run_dir/struc_clean.pdb" >> "$tmp_file"
-          else
-               # No ATOM/HETATM lines found, just add SSBOND at the top
-               for bond in "${disulfide_bonds[@]}"; do
-               # Parse the bond specification
-               read -r res1 chain1 num1 res2 chain2 num2 <<< "$bond"
-               echo "SSBOND   $bond_count $res1 $chain1   $num1    $res2 $chain2  $num2" >> "$tmp_file"
-               bond_count=$((bond_count + 1))
-               done
-               
-               # Add the entire original file
-               cat "$run_dir/struc_clean.pdb" >> "$tmp_file"
-          fi
-        
-        # Replace the original file with the new one containing SSBOND records
-        mv "$tmp_file" "$run_dir/struc_clean.pdb"
-        echo "Added disulfide bond records to PDB file"
-    fi
-    
+
+
     # Change to the run directory.
     cd "$run_dir" || exit 1
 
-    # Function to count unique chains and generate pdb2gmx input
-    generate_pdb2gmx_input() {
-        # Count unique chains (excluding HETATM and water)
-        num_chains=$(grep "^ATOM" struc_clean.pdb | awk '{print $5}' | sort -u | wc -l)
-        
-        # Generate input string: "1 0" for each chain
-        input_string=""
-        for ((i=1; i<=$num_chains; i++)); do
-            input_string+="1 0 "
-        done
-        
-        # Remove trailing space
-        input_string=$(echo "$input_string" | sed 's/ *$//')
-        echo "$input_string"
-    }
-
-    # Run pdb2gmx with dynamic input based on chain count
-    generate_pdb2gmx_input | gmx pdb2gmx -f struc_clean.pdb \
+    # Run pdb2gmx.
+    echo "1 0 1 0 1 0" | gmx pdb2gmx -f struc_clean.pdb \
                                    -o struc_processed.gro \
                                    -p topol.top \
                                    -water spce \
                                    -ff charmm36-jul2022 \
-                                   -ter -ignh 2> pdb2gmx_error.log
+                                   -ter -ignh -merge all 2> pdb2gmx_error.log
     if [ $? -ne 0 ]; then
          echo "pdb2gmx failed. Check $run_dir/pdb2gmx_error.log for details."
          echo -e "\n---- Directory listing ----" >> "pdb2gmx_error.log"
@@ -267,7 +207,7 @@ fi
 
 #---------------------------------------------------
 # Production run and energy calculation as one function.
-run_production() {  
+run_production() {
     if [ -f "md_0_1.cpt" ]; then # If a checkpoint file exists, resume the production run.
          echo "Checkpoint file found. Resuming production MD from checkpoint."
          # Execute the production run with pullx and pullf files if they exist.
