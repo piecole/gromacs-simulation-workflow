@@ -12,13 +12,12 @@
 # Help flag
 if [ "$1" == "-h" ]; then
     echo "This script sets up and runs a full GROMACS simulation workflow."
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s 'CYS A 58 CYS B 158']"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]"
     echo "Requirements:"
     echo "[input].pdb, ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp (or other file), md_energy.mdp, index.ndx (or other file)."
     echo "Optional arguments:"
     echo "-m custom_mdp.mdp: Specify a custom production MDP file."
     echo "-n custom_index.ndx: Specify a custom index file."
-    echo "-s 'CYS A 58 CYS B 158': Add a disulfide bond between specified cysteines (can be used multiple times for multiple bonds)."
     echo "resume=TRUE: Skip to production run."
     exit 0
 fi
@@ -46,11 +45,10 @@ export OMP_NUM_THREADS=16
 
 # Check for required arguments.
 if [ $# -lt 2 ]; then
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s 'CYS A 58 CYS B 158']"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]"
     echo "Optional arguments:"
     echo "-m custom_mdp.mdp: Specify a custom production MDP file."
     echo "-n custom_index.ndx: Specify a custom index file."
-    echo "-s 'CYS A 58 CYS B 158': Add a disulfide bond between specified cysteines (can be used multiple times for multiple bonds)."
     echo "resume=TRUE: Skip setting up the folder and equilibriating system."
     exit 1
 fi
@@ -64,8 +62,7 @@ shift 2
 production_mdp="md.mdp"
 index_file="index.ndx"   # Default .ndx file
 resume_flag=false
-disulfide_bonds=()
-while getopts "rm:n:s:" opt; do
+while getopts "rm:n:" opt; do
     case $opt in
         r)
             resume_flag=true

@@ -18,7 +18,7 @@ This repository contains a SLURM-based workflow script for running GROMACS molec
 ## Usage
 
 ```bash
-sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s 'CYS A 58 CYS B 158']
+sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]
 ```
 
 ### Arguments
@@ -27,7 +27,6 @@ sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom
 - `-r`: Resume flag to skip to production run
 - `-m`: Specify a custom production MDP file
 - `-n`: Specify a custom index file
-- `-s`: Add disulfide bond between specified cysteines (can be used multiple times)
 
 ## Important Notes
 
@@ -40,8 +39,6 @@ This script is not universally applicable and requires customization for differe
 3. **System-Specific Parameters**: Various parameters in the MDP files (temperature, pressure, timestep, etc.) may need to be adjusted based on your specific system and requirements.
 
 4. **Index Groups**: The script uses a default `index.ndx` file. You may need to create custom index groups for your specific analysis needs.
-
-5. **Disulfide Bonds**: While the script can handle disulfide bonds, you need to specify them explicitly using the `-s` option.
 
 ## Customization Required
 
@@ -58,9 +55,6 @@ Before using this script for a new system, you should:
 ```bash
 # Basic usage
 sbatch run_full_gromacs_flow.sh protein_A run1
-
-# With disulfide bonds
-sbatch run_full_gromacs_flow.sh protein_A run1 -s 'CYS A 58 CYS B 158'
 
 # Using custom MDP and index files
 sbatch run_full_gromacs_flow.sh protein_A run1 -m custom_md.mdp -n custom_index.ndx
