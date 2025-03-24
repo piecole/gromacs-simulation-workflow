@@ -12,13 +12,15 @@
 # Help flag
 if [ "$1" == "-h" ]; then
     echo "This script sets up and runs a full GROMACS simulation workflow."
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
     echo "Requirements:"
     echo "[input].pdb, ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp (or other file), md_energy.mdp, index.ndx (or other file)."
     echo "Optional arguments:"
     echo "-m custom_mdp.mdp: Specify a custom production MDP file."
     echo "-n custom_index.ndx: Specify a custom index file."
-    echo "resume=TRUE: Skip to production run."
+    echo "-r: Resume from production run."
+    echo "-s: Stop the process just before pdb2gmx."
+    echo "-g gro_file: Continue the process from after pdb2gmx with the specified .gro file."
     exit 0
 fi
 
@@ -45,11 +47,13 @@ export OMP_NUM_THREADS=16
 
 # Check for required arguments.
 if [ $# -lt 2 ]; then
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
     echo "Optional arguments:"
     echo "-m custom_mdp.mdp: Specify a custom production MDP file."
     echo "-n custom_index.ndx: Specify a custom index file."
-    echo "resume=TRUE: Skip setting up the folder and equilibriating system."
+    echo "-r: Resume from production run."
+    echo "-s: Stop the process just before pdb2gmx."
+    echo "-g gro_file: Continue the process from after pdb2gmx with the specified .gro file."
     exit 1
 fi
 
@@ -62,7 +66,9 @@ shift 2
 production_mdp="md.mdp"
 index_file="index.ndx"   # Default .ndx file
 resume_flag=false
-while getopts "rm:n:" opt; do
+stop_before_pdb2gmx=false
+gro_file=""
+while getopts "rm:n:sg:" opt; do
     case $opt in
         r)
             resume_flag=true
@@ -73,8 +79,14 @@ while getopts "rm:n:" opt; do
         n)
             index_file="$OPTARG"
             ;;
+        s)
+            stop_before_pdb2gmx=true
+            ;;
+        g)
+            gro_file="$OPTARG"
+            ;;
         \?)
-            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]"
+            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
             exit 1
             ;;
     esac
@@ -137,18 +149,34 @@ else
     # Change to the run directory.
     cd "$run_dir" || exit 1
 
-    # Run pdb2gmx.
-    echo "1 0 1 0 1 0" | gmx pdb2gmx -f struc_clean.pdb \
-                                   -o struc_processed.gro \
-                                   -p topol.top \
-                                   -water spce \
-                                   -ff charmm36-jul2022 \
-                                   -ter -ignh -merge all 2> pdb2gmx_error.log
-    if [ $? -ne 0 ]; then
-         echo "pdb2gmx failed. Check $run_dir/pdb2gmx_error.log for details."
-         echo -e "\n---- Directory listing ----" >> "pdb2gmx_error.log"
-         ls -halt >> "pdb2gmx_error.log"
-         exit 1
+    # Stop before pdb2gmx if -s flag is set
+    if [ "$stop_before_pdb2gmx" = true ]; then
+        echo "Stopping before pdb2gmx as requested with -s flag."
+        exit 0
+    fi
+
+    # Skip pdb2gmx if a .gro file is provided with -g flag
+    if [ -n "$gro_file" ]; then
+        echo "Skipping pdb2gmx and using provided .gro file: $gro_file"
+        if [ ! -f "$gro_file" ]; then
+            echo "Error: Specified .gro file '$gro_file' not found."
+            exit 1
+        fi
+        cp "$gro_file" struc_processed.gro
+    else
+        # Run pdb2gmx.
+        echo "1 0 1 0 1 0" | gmx pdb2gmx -f struc_clean.pdb \
+                                       -o struc_processed.gro \
+                                       -p topol.top \
+                                       -water spce \
+                                       -ff charmm36-jul2022 \
+                                       -ter -ignh -merge all 2> pdb2gmx_error.log
+        if [ $? -ne 0 ]; then
+             echo "pdb2gmx failed. Check $run_dir/pdb2gmx_error.log for details."
+             echo -e "\n---- Directory listing ----" >> "pdb2gmx_error.log"
+             ls -halt >> "pdb2gmx_error.log"
+             exit 1
+        fi
     fi
 
     # Create a box.
