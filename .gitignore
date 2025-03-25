@@ -1,0 +1,21 @@
+# PDB files
+*.pdb
+
+# GROMACS output files
+*.xtc
+*.trr
+*.edr
+*.cpt
+*.gro
+*.tpr
+*.ndx
+*.log
+*.xvg
+*.top
+*.itp
+
+# Temporary files
+*~
+*.bak
+*.swp
+.DS_Store 
