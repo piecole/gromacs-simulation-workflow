@@ -153,6 +153,8 @@ else
         exit 0
     fi
 
+    cp ../charmm36-jul2022.ff .
+
     # Skip pdb2gmx if a .gro file is provided with -g flag
     if [ -n "$gro_file" ]; then
         echo "Skipping pdb2gmx and using provided .gro file: $gro_file"
@@ -160,7 +162,6 @@ else
             echo "Error: Specified .gro file '$gro_file' not found."
             exit 1
         fi
-        cp "$gro_file" struc_processed.gro
     else
         # Run pdb2gmx.
         echo "1 0 1 0 1 0" | gmx pdb2gmx -f struc_clean.pdb \
