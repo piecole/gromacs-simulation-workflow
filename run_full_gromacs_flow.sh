@@ -182,6 +182,7 @@ else
     gmx editconf -f struc_processed.gro -o struc_newbox.gro -c -d 1.0 -bt cubic
 
     # Solvate.
+    echo "Solvating..."
     gmx solvate -cp struc_newbox.gro -cs spc216.gro -o struc_solv.gro -p topol.top 2> solvate_error.log
     if [ $? -ne 0 ]; then
          echo "Solvation failed. Check $run_dir/solvate_error.log for details."
@@ -189,6 +190,7 @@ else
     fi
 
     # Add ions.
+    echo "Adding ions..."
     gmx grompp -f ions.mdp -c struc_solv.gro -p topol.top -o ions.tpr 2> ions_grompp_error.log
     if [ $? -ne 0 ]; then
          echo "grompp for ions failed. Check $run_dir/ions_grompp_error.log for details."
@@ -200,6 +202,7 @@ else
                           -pname NA -nname CL -neutral
 
     # Energy minimization.
+    echo "Energy minimization..."
     gmx grompp -f minim.mdp -c struc_solv_ions.gro -p topol.top -o em.tpr
     gmx mdrun -v -deffnm em -s em.tpr -ntmpi 1
     echo "11 0" | gmx energy -f em.edr -o potential.xvg
@@ -209,6 +212,7 @@ else
     fi
 
     # NVT equilibration.
+    echo "Temperature equilibration..."
     gmx grompp -f nvt.mdp -c em.gro -r em.gro -p topol.top -o nvt.tpr
     gmx mdrun -deffnm nvt -s nvt.tpr
     echo "17 0" | gmx energy -f nvt.edr -o temperature.xvg
@@ -218,6 +222,7 @@ else
     fi
 
     # NPT equilibration (with modified npt.mdp without positional restraints).
+    echo "Pressure equilibration..."
     gmx grompp -f npt.mdp -c nvt.gro -r nvt.gro -t nvt.cpt \
               -p topol.top -o npt.tpr
     gmx mdrun -deffnm npt -s npt.tpr
