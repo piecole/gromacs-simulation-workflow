@@ -6,6 +6,7 @@
 #SBATCH --mem-per-gpu=32G
 #SBATCH --job-name=gromacs
 #SBATCH --output=gromacs-workflow-%j.out
+#SBATCH --mail-user=pierre.coleman@kcl.ac.uk
 #SBATCH --mail-type=BEGIN,END,FAIL   # When to send the emails
 
 # Help flag
@@ -16,7 +17,7 @@ if [ "$1" == "-h" ]; then
     echo "[input].pdb, ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp (or other file), md_energy.mdp, index.ndx (or other file)."
     echo "Optional arguments:"
     echo "-m custom_mdp.mdp: Specify a custom production MDP file."
-    echo "-n custom_index.ndx: Specify a custom index file."
+    echo "-n index.ndx: Specify an index file."
     echo "-r: Resume from production run."
     echo "-s: Stop the process just before pdb2gmx."
     echo "-g gro_file: Continue the process from after pdb2gmx with the specified .gro file."
@@ -237,7 +238,7 @@ fi
 # Production run and energy calculation as one function.
 run_production() {
     # Check if index file exists before proceeding
-    if [ ! -f "$index_file" ]; then
+    if [ ! -f "../$index_file" ]; then
         echo "Index file '$index_file' not found."
         echo "Please create an index file using 'gmx make_ndx' before proceeding with the production run. Indicate index file with the -n flag."
         echo "You can then resume the workflow from here by using the -r flag."
