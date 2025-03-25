@@ -126,10 +126,10 @@ if [ "$resume_flag" = true ]; then
          exit 1
     fi
     cd "$run_dir" || exit 1
-    if [ ! -f "md_0_1.tpr" ]; then
-         echo "Error: Production TPR file not found in '$run_dir'. Cannot resume."
-         exit 1
-    fi
+    # if [ ! -f "md_0_1.tpr" ]; then
+    #     echo "Error: Production TPR file not found in '$run_dir'. Cannot resume."
+    #     exit 1
+    # fi
 else
     echo "No resume flag detected. Running full pre-production setup."
 
@@ -240,9 +240,12 @@ run_production() {
     # Check if index file exists before proceeding
     if [ ! -f "$index_file" ]; then
         echo "Index file '$index_file' not found."
-        echo "Please create an index file using 'gmx make_ndx' before proceeding with the production run. Specify the index file with the -n flag."
+        echo "Please create an index file using 'gmx make_ndx' before proceeding with the production run. Indicate index file with the -n flag."
         echo "You can then resume the workflow from here by using the -r flag."
         exit 1
+    else
+        cp "../$index_file" .
+        echo "Index file '$index_file' found. Proceeding with production run."
     fi
 
     if [ -f "md_0_1.cpt" ]; then # If a checkpoint file exists, resume the production run.
