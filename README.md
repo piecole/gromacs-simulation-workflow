@@ -47,9 +47,8 @@ Before using this script for a new system, you should:
 
 1. Review and modify the `md.mdp` file to include appropriate energy groups
 2. Check and adjust the force field settings if needed
-3. Verify that the index groups in `index.ndx` match your analysis requirements
-4. Adjust simulation parameters in the MDP files as needed
-5. Consider whether you need to modify the box size or solvation settings
+3. Adjust simulation parameters in the MDP files as needed
+4. Consider whether you need to modify the box size or solvation settings
 
 ## Example
 
