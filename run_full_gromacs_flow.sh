@@ -6,7 +6,6 @@
 #SBATCH --mem-per-gpu=32G
 #SBATCH --job-name=gromacs
 #SBATCH --output=gromacs-workflow-%j.out
-#SBATCH --mail-user=pierre.coleman@kcl.ac.uk
 #SBATCH --mail-type=BEGIN,END,FAIL   # When to send the emails
 
 # Help flag
