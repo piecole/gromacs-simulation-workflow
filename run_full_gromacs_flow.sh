@@ -6,6 +6,7 @@
 #SBATCH --mem-per-gpu=32G
 #SBATCH --job-name=gromacs
 #SBATCH --output=gromacs-workflow-%j.out
+#SBATCH --mail-user=pierre.coleman@kcl.ac.uk
 #SBATCH --mail-type=BEGIN,END,FAIL   # When to send the emails
 
 # Help flag
@@ -236,17 +237,6 @@ fi
 #---------------------------------------------------
 # Production run and energy calculation as one function.
 run_production() {
-    # Check if index file exists before proceeding
-    if [ ! -f "../$index_file" ]; then
-        echo "Index file '$index_file' not found."
-        echo "Please create an index file using 'gmx make_ndx' before proceeding with the production run. Indicate index file with the -n flag."
-        echo "You can then resume the workflow from here by using the -r flag."
-        exit 1
-    else
-        cp "../$index_file" .
-        echo "Index file '$index_file' found. Proceeding with production run."
-    fi
-
     if [ -f "md_0_1.cpt" ]; then # If a checkpoint file exists, resume the production run.
          echo "Checkpoint file found. Resuming production MD from checkpoint."
          # Execute the production run with pullx and pullf files if they exist.
@@ -266,6 +256,16 @@ run_production() {
          fi
     else # If no checkpoint file exists, start the production run from the beginning.
          echo "No checkpoint file found. Starting production MD from the beginning."
+         # Check if index file exists before proceeding
+         if [ ! -f "../$index_file" ]; then
+             echo "Index file '$index_file' not found."
+             echo "Please create an index file using 'gmx make_ndx' before proceeding with the production run. Indicate index file with the -n flag."
+             echo "You can then resume the workflow from here by using the -r flag."
+             exit 1
+         else
+             cp "../$index_file" .
+             echo "Index file '$index_file' found. Proceeding with production run."
+         fi
          # Create the production run TPR.
          gmx grompp -f "$production_mdp" -c npt.gro -t npt.cpt -p topol.top -n "$index_file" -o md_0_1.tpr
          # Execute production run
