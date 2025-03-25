@@ -47,7 +47,7 @@ export OMP_NUM_THREADS=16
 
 # Check for required arguments.
 if [ $# -lt 2 ]; then
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]"
     echo "Optional arguments:"
     echo "-m custom_mdp.mdp: Specify a custom production MDP file."
     echo "-n custom_index.ndx: Specify a custom index file."
@@ -111,7 +111,6 @@ set_up_folder() {
     cp npt.mdp "$run_dir" || missing_file+="npt.mdp "
     cp "$production_mdp" "$run_dir" || missing_file+="$production_mdp "
     cp md_energy.mdp "$run_dir" || missing_file+="md_energy.mdp "
-    cp "$index_file" "$run_dir" || missing_file+="$index_file "
 
     if [ -n "$missing_file" ]; then
         echo "Error: Missing file(s): $missing_file"
@@ -144,7 +143,6 @@ else
     fi
     # Clean up: remove HOH lines from the pdb file and copy it to the run directory.
     grep -v HOH "$input_file.pdb" > "$run_dir/struc_clean.pdb"
-
 
     # Change to the run directory.
     cd "$run_dir" || exit 1
@@ -233,6 +231,14 @@ fi
 #---------------------------------------------------
 # Production run and energy calculation as one function.
 run_production() {
+    # Check if index file exists before proceeding
+    if [ ! -f "$index_file" ]; then
+        echo "Index file '$index_file' not found."
+        echo "Please create an index file using 'gmx make_ndx' before proceeding with the production run. Specify the index file with the -n flag."
+        echo "You can then resume the workflow from here by using the -r flag."
+        exit 1
+    fi
+
     if [ -f "md_0_1.cpt" ]; then # If a checkpoint file exists, resume the production run.
          echo "Checkpoint file found. Resuming production MD from checkpoint."
          # Execute the production run with pullx and pullf files if they exist.

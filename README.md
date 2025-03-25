@@ -76,6 +76,6 @@ sbatch run_full_gromacs_flow.sh protein_A run1 -g path/to/custom.gro
 The script provides several options to control the workflow:
 
 1. **Complete Workflow**: By default, runs the entire process from PDB to production.
-2. **Pre-Processing Only**: Use the `-s` flag to prepare the directory and stop before pdb2gmx, useful when you need to do mandual gmx2pdb such as specifying disulphide bonds.
+2. **Pre-Processing Only**: Use the `-s` flag to prepare the directory and stop before pdb2gmx, useful when you need to do mandual gmx2pdb such as specifying disulphide bonds. Also may need to make a correct index file here
 3. **Post-Processing with Custom Structure**: Use the `-g` flag with a .gro file to skip pdb2gmx and continue with your pre-processed structure.
 4. **Resume Production**: Use the `-r` flag to skip straight to the production run phase. Most useful if compute time runs out before simulation finishes
