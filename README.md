@@ -13,7 +13,6 @@ This repository contains a SLURM-based workflow script for running GROMACS molec
   - `npt.mdp`
   - `md.mdp` (or custom production MDP file)
   - `md_energy.mdp`
-  - `index.ndx` (or custom index file)
 
 ## Usage
 
@@ -26,7 +25,7 @@ sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp
 - `indicator`: Identifier for this specific run
 - `-r`: Resume flag to skip to production run
 - `-m`: Specify a custom production MDP file
-- `-n`: Specify a custom index file
+- `-n`: Specify a index file
 - `-s`: Stop the process just before pdb2gmx
 - `-g gro_file`: Continue the process from after pdb2gmx with the specified .gro file
 
@@ -40,7 +39,7 @@ This script is not universally applicable and requires customization for differe
 
 3. **System-Specific Parameters**: Various parameters in the MDP files (temperature, pressure, timestep, etc.) may need to be adjusted based on your specific system and requirements.
 
-4. **Index Groups**: The script uses a default `index.ndx` file. You may need to create custom index groups for your specific analysis needs.
+4. **Index Groups**: An `.ndx` index file is required for the production run. The script will check for the presence of the index file before starting the production run and stop if it's not found, allowing you to create the necessary index groups for your specific analysis needs. Use `-n` to specify index file in parent folder.
 
 ## Customization Required
 
@@ -76,6 +75,6 @@ sbatch run_full_gromacs_flow.sh protein_A run1 -g path/to/custom.gro
 The script provides several options to control the workflow:
 
 1. **Complete Workflow**: By default, runs the entire process from PDB to production.
-2. **Pre-Processing Only**: Use the `-s` flag to prepare the directory and stop before pdb2gmx, useful when you need to do mandual gmx2pdb such as specifying disulphide bonds. Also may need to make a correct index file here
+2. **Pre-Processing Only**: Use the `-s` flag to prepare the directory and stop before pdb2gmx, useful when you need to do manual gmx2pdb such as specifying disulphide bonds. Also may need to make a correct index file here.
 3. **Post-Processing with Custom Structure**: Use the `-g` flag with a .gro file to skip pdb2gmx and continue with your pre-processed structure.
-4. **Resume Production**: Use the `-r` flag to skip straight to the production run phase. Most useful if compute time runs out before simulation finishes
+4. **Resume Production**: Use the `-r` flag to skip straight to the production run phase. Most useful if compute time runs out before simulation finishes.
