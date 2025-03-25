@@ -1,0 +1,5 @@
+# Filter out lines containing email addresses
+*.py filter=email-filter
+*.txt filter=email-filter
+*.md filter=email-filter 
+*.sh filter=email-filter
