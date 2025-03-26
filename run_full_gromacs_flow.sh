@@ -24,6 +24,24 @@ if [ "$1" == "-h" ]; then
     exit 0
 fi
 
+# Copy mdp files and make rundir  if rundir doesn't exist.
+if [ ! -d "$run_dir" ]; then
+    mkdir -p "$run_dir"
+    missing_file=""
+    cp ions.mdp "$run_dir" || missing_file+="ions.mdp "
+    cp minim.mdp "$run_dir" || missing_file+="minim.mdp "
+    cp nvt.mdp "$run_dir" || missing_file+="nvt.mdp "
+    cp npt.mdp "$run_dir" || missing_file+="npt.mdp "
+    cp "$production_mdp" "$run_dir" || missing_file+="$production_mdp "
+    cp md_energy.mdp "$run_dir" || missing_file+="md_energy.mdp "
+
+    if [ -n "$missing_file" ]; then
+        echo "Error: Missing file(s): $missing_file"
+        rm -r "$run_dir"
+        exit 1
+    fi
+fi
+
 # Print info about GPU allocation.
 echo "Allocated GPU(s): $CUDA_VISIBLE_DEVICES"
 echo "GPU details:"
@@ -99,25 +117,6 @@ run_dir="run_${input_file}_${indicator}"
 export GMXLIB
 GMXLIB=$(pwd)
 
-# Copy mdp files and make folder
-set_up_folder() {
-    if [ ! -d "$run_dir" ]; then
-        mkdir -p "$run_dir"
-    fi
-    missing_file=""
-    cp ions.mdp "$run_dir" || missing_file+="ions.mdp "
-    cp minim.mdp "$run_dir" || missing_file+="minim.mdp "
-    cp nvt.mdp "$run_dir" || missing_file+="nvt.mdp "
-    cp npt.mdp "$run_dir" || missing_file+="npt.mdp "
-    cp "$production_mdp" "$run_dir" || missing_file+="$production_mdp "
-    cp md_energy.mdp "$run_dir" || missing_file+="md_energy.mdp "
-
-    if [ -n "$missing_file" ]; then
-        echo "Error: Missing file(s): $missing_file"
-        exit 1
-    fi
-}
-
 # If resume mode is requested, verify that the run directory and production TPR exist.
 if [ "$resume_flag" = true ]; then
     echo "Resume flag detected. Skipping setup steps."
@@ -133,16 +132,13 @@ if [ "$resume_flag" = true ]; then
 else
     echo "No resume flag detected. Running full pre-production setup."
 
-    # Make the run directory if it doesnt exist, and copy mdp files and index file into it.
-    set_up_folder
-
     # Check for structure file
     if [ ! -f "$input_file.pdb" ]; then
          echo "Error: Structure file '$input_file.pdb' not found."
          exit 1
     fi
     # Clean up: remove HOH lines from the pdb file and copy it to the run directory.
-    grep -v HOH "$input_file.pdb" > "$run_dir/struc_clean.pdb"
+    grep -Ev "HOH|GOL|SO4|PEG|EDO|ACT|DMS|MPD|TRS|MES|HEPES" "$input_file.pdb" > "$run_dir/struc_clean.pdb"
 
     # Change to the run directory.
     cd "$run_dir" || exit 1
