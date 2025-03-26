@@ -24,6 +24,54 @@ if [ "$1" == "-h" ]; then
     exit 0
 fi
 
+# Parse arguments
+input_file=$1
+indicator=$2
+shift 2
+
+# Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]
+production_mdp="md.mdp"
+index_file="index.ndx"   # Default .ndx file
+resume_flag=false
+stop_before_pdb2gmx=false
+gro_file=""
+while getopts "rm:n:sg:" opt; do
+    case $opt in
+        r)
+            resume_flag=true
+            ;;
+        m)
+            production_mdp="$OPTARG"
+            ;;
+        n)
+            index_file="$OPTARG"
+            ;;
+        s)
+            stop_before_pdb2gmx=true
+            ;;
+        g)
+            gro_file="$OPTARG"
+            ;;
+        \?)
+            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
+            exit 1
+            ;;
+    esac
+done
+
+# Define the run directory.
+run_dir="run_${input_file}_${indicator}"
+
+# Print all the arguments.
+echo "Input file: $input_file"
+echo "Indicator: $indicator"
+echo "Resume flag: $resume_flag"
+echo "Production MDP: $production_mdp"
+echo "Index file: $index_file"
+echo "Stop before pdb2gmx: $stop_before_pdb2gmx"
+echo "Run directory: $run_dir"
+
+
 # Copy mdp files and make rundir  if rundir doesn't exist.
 if [ ! -d "$run_dir" ]; then
     mkdir -p "$run_dir"
@@ -74,44 +122,6 @@ if [ $# -lt 2 ]; then
     echo "-g gro_file: Continue the process from after pdb2gmx with the specified .gro file."
     exit 1
 fi
-
-# Parse arguments
-input_file=$1
-indicator=$2
-shift 2
-
-# Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]
-production_mdp="md.mdp"
-index_file="index.ndx"   # Default .ndx file
-resume_flag=false
-stop_before_pdb2gmx=false
-gro_file=""
-while getopts "rm:n:sg:" opt; do
-    case $opt in
-        r)
-            resume_flag=true
-            ;;
-        m)
-            production_mdp="$OPTARG"
-            ;;
-        n)
-            index_file="$OPTARG"
-            ;;
-        s)
-            stop_before_pdb2gmx=true
-            ;;
-        g)
-            gro_file="$OPTARG"
-            ;;
-        \?)
-            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
-            exit 1
-            ;;
-    esac
-done
-
-# Define the run directory.
-run_dir="run_${input_file}_${indicator}"
 
 # Specify the force field folder as working directory.
 export GMXLIB
@@ -275,7 +285,7 @@ run_production() {
     fi
 
     # Energy calculation steps.
-    gmx grompp -f "$production_mdp" -c md_0_1.gro \
+    gmx grompp -f md_energy.mdp -c md_0_1.gro \
               -p topol.top -o md_0_1_energy.tpr -n "$index_file"
     gmx mdrun -s md_0_1_energy.tpr \
               -rerun md_0_1.xtc \
