@@ -267,7 +267,10 @@ fi
 #---------------------------------------------------
 # Production run and energy calculation as one function.
 run_production() {
-    if [ -f "md_0_1.cpt" ]; then # If a checkpoint file exists, resume the production run.
+    # If final .gro file exists, skip the production run.
+    if [ -f "md_0_1.gro" ]; then
+         echo "Final .gro file found. Skipping production run."
+    elif [ -f "md_0_1.cpt" ]; then # If a checkpoint file exists, resume the production run.
          echo "Checkpoint file found. Resuming production MD from checkpoint."
          # Execute the production run with pullx and pullf files if they exist.
          # For some reason omitting this only gives an error when a run is resumed.
@@ -324,6 +327,11 @@ run_production() {
     groups=$(grep "energygrps" md_energy.mdp | awk -F'=' '{print $2}' | xargs)
     group1=$(echo "$groups" | awk '{print $1}')
     group2=$(echo "$groups" | awk '{print $2}')
+    # Return the energy groups. Handle errors if not found.
+    if [ -z "$group1" ] || [ -z "$group2" ]; then
+         echo "Error: Energy groups not found in md_energy.mdp. Define as energygrps = protein_1 protein_2 in the mdp file. With groups referenced in the index file."
+         exit 1
+    fi
     echo "Energy groups: $group1 and $group2"
 
     echo "Extracting interaction energy."
