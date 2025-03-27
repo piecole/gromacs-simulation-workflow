@@ -92,6 +92,7 @@ echo "Resume flag: $resume_flag"
 echo "Production MDP: $production_mdp"
 echo "Index file: $index_file"
 echo "Stop before pdb2gmx: $stop_before_pdb2gmx"
+echo "Gro file: $gro_file"
 echo "Run directory: $run_dir"
 
 # Copy mdp files and make rundir  if rundir doesn't exist.
@@ -175,12 +176,21 @@ else
     if [ -n "$gro_file" ]; then
         echo "Skipping pdb2gmx and using provided .gro file: $gro_file"
         if [ ! -f "$gro_file" ]; then
-            echo "Error: Specified .gro file '$gro_file' not found."
+            echo "Error: Specified .gro file '$gro_file' not found in $run_dir."
             exit 1
         fi
     else
+        # Build gmx termini string
+        # First count the number of chains in the pdb file.
+        num_chains=$(grep -c "TER" struc_clean.pdb)
+        # Then build the gmx termini string.
+        termini_string=""
+        for ((i=1; i<=num_chains; i++)); do
+            termini_string+="1 0 "
+        done
+        echo "$num_chains chains found in pdb file. Running pdb2gmx with termini string: $termini_string."
         # Run pdb2gmx.
-        echo "1 0 1 0 1 0" | gmx pdb2gmx -f struc_clean.pdb \
+        echo $termini_string | gmx pdb2gmx -f struc_clean.pdb \
                                        -o struc_processed.gro \
                                        -p topol.top \
                                        -water spce \
