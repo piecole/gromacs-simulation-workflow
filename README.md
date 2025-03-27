@@ -6,13 +6,7 @@ This repository contains a SLURM-based workflow script for running GROMACS molec
 
 - GROMACS 2021.5 or later
 - SLURM workload manager
-- Required MDP files:
-  - `ions.mdp`
-  - `minim.mdp`
-  - `nvt.mdp`
-  - `npt.mdp`
-  - `md.mdp` (or custom production MDP file)
-  - `md_energy.mdp`
+- GPU with CUDA support
 
 ## Usage
 
@@ -29,11 +23,34 @@ sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp
 - `-s`: Stop the process just before pdb2gmx
 - `-g gro_file`: Continue the process from after pdb2gmx with the specified .gro file
 
+## Workflow Steps
+
+1. **System Setup**:
+   - Creates a run directory with unique identifier
+   - Copies all required MDP files
+   - Cleans input PDB file by removing water and other small molecules
+
+2. **Structure Processing**:
+   - Runs pdb2gmx with CHARMM36-Jul2022 force field
+   - Creates simulation box with 1.0 nm padding
+   - Solvates system with SPC/E water model
+   - Adds ions for neutralization
+
+3. **Equilibration**:
+   - Energy minimization
+   - NVT equilibration (temperature)
+   - NPT equilibration (pressure)
+
+4. **Production**:
+   - Production MD run with GPU acceleration
+   - Energy calculations
+   - Interaction energy analysis between specified groups
+
 ## Important Notes
 
 This script is not universally applicable and requires customization for different systems:
 
-1. **Energy Groups**: The `md.mdp` file needs to be customized with appropriate energy groups for your specific system. The current version may not include all necessary energy groups for your analysis.
+1. **Energy Groups**: The `md_energy.mdp` file needs to be customized with appropriate energy groups for your specific system. The script extracts interaction energy between two groups specified in this file.
 
 2. **Force Field**: The script currently uses the CHARMM36-Jul2022 force field. If you need to use a different force field, you'll need to modify the `pdb2gmx` command in the script.
 
@@ -45,7 +62,7 @@ This script is not universally applicable and requires customization for differe
 
 Before using this script for a new system, you should:
 
-1. Review and modify the `md.mdp` file to include appropriate energy groups
+1. Review and modify the `md_energy.mdp` file to include appropriate energy groups
 2. Check and adjust the force field settings if needed
 3. Adjust simulation parameters in the MDP files as needed
 4. Consider whether you need to modify the box size or solvation settings
@@ -77,3 +94,12 @@ The script provides several options to control the workflow:
 2. **Pre-Processing Only**: Use the `-s` flag to prepare the directory and stop before pdb2gmx, useful when you need to do manual gmx2pdb such as specifying disulphide bonds. Also may need to make a correct index file here.
 3. **Post-Processing with Custom Structure**: Use the `-g` flag with a .gro file to skip pdb2gmx and continue with your pre-processed structure.
 4. **Resume Production**: Use the `-r` flag to skip straight to the production run phase. Most useful if compute time runs out before simulation finishes.
+
+## Output Files
+
+The script generates several important output files:
+- `interaction_energy.xvg`: Contains Coulomb and Lennard-Jones interaction energies between specified groups
+- `md_0_1.xtc`: Trajectory file
+- `md_0_1.gro`: Final structure
+- Various energy and analysis files (temperature.xvg, pressure.xvg, density.xvg)
+- Checkpoint files (.cpt) for resuming interrupted simulations
