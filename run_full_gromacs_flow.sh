@@ -12,16 +12,26 @@
 # Help flag
 if [ "$1" == "-h" ]; then
     echo "This script sets up and runs a full GROMACS simulation workflow."
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
-    echo "Requirements:"
-    echo "[input].pdb, ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp (or other file), md_energy.mdp, index.ndx (or other file)."
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
+    echo "Required arguments:"
+    echo "  <input_file>    : Base name of the input PDB file (without .pdb extension)"
+    echo "  <indicator>     : Unique identifier for this run"
     echo "Optional arguments:"
-    echo "-m custom_mdp.mdp: Specify a custom production MDP file."
-    echo "-n index.ndx: Specify an index file."
-    echo "-r: Resume from production run."
-    echo "-s: Stop the process just before pdb2gmx."
-    echo "-g gro_file: Continue the process from after pdb2gmx with the specified .gro file."
+    echo "  -r             : Resume from production run"
+    echo "  -m custom_mdp.mdp : Specify a custom production MDP file"
+    echo "  -n custom_index.ndx : Specify a custom index file"
+    echo "  -s             : Stop the process just before pdb2gmx"
+    echo "  -g gro_file    : Continue the process from after pdb2gmx with the specified .gro file"
+    echo "Requirements:"
+    echo "[input].pdb, ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp (or other file), md_energy.mdp, index.ndx (or other file)"
     exit 0
+fi
+
+# Check for required arguments
+if [ $# -lt 2 ]; then
+    echo "Error: Missing required arguments"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
+    exit 1
 fi
 
 # Parse arguments
@@ -29,31 +39,45 @@ input_file=$1
 indicator=$2
 shift 2
 
-# Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]
+# Initialize variables
 production_mdp="md.mdp"
-index_file="index.ndx"   # Default .ndx file
 resume_flag=false
 stop_before_pdb2gmx=false
 gro_file=""
+
+# Parse optional arguments
 while getopts "rm:n:sg:" opt; do
     case $opt in
         r)
             resume_flag=true
             ;;
         m)
+            if [ -z "$OPTARG" ]; then
+                echo "Error: -m requires a custom MDP file argument"
+                exit 1
+            fi
             production_mdp="$OPTARG"
             ;;
         n)
+            if [ -z "$OPTARG" ]; then
+                echo "Error: -n requires a custom index file argument"
+                exit 1
+            fi
             index_file="$OPTARG"
             ;;
         s)
             stop_before_pdb2gmx=true
             ;;
         g)
+            if [ -z "$OPTARG" ]; then
+                echo "Error: -g requires a gro file argument"
+                exit 1
+            fi
             gro_file="$OPTARG"
             ;;
         \?)
-            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
+            echo "Invalid option: -$OPTARG"
+            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
             exit 1
             ;;
     esac
@@ -70,7 +94,6 @@ echo "Production MDP: $production_mdp"
 echo "Index file: $index_file"
 echo "Stop before pdb2gmx: $stop_before_pdb2gmx"
 echo "Run directory: $run_dir"
-
 
 # Copy mdp files and make rundir  if rundir doesn't exist.
 if [ ! -d "$run_dir" ]; then
@@ -111,18 +134,6 @@ module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0
 
 export OMP_NUM_THREADS=16
 
-# Check for required arguments.
-if [ $# -lt 2 ]; then
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r(resume)] [-m custom_mdp.mdp] [-n custom_index.ndx]"
-    echo "Optional arguments:"
-    echo "-m custom_mdp.mdp: Specify a custom production MDP file."
-    echo "-n custom_index.ndx: Specify a custom index file."
-    echo "-r: Resume from production run."
-    echo "-s: Stop the process just before pdb2gmx."
-    echo "-g gro_file: Continue the process from after pdb2gmx with the specified .gro file."
-    exit 1
-fi
-
 # Specify the force field folder as working directory.
 export GMXLIB
 GMXLIB=$(pwd)
@@ -159,7 +170,7 @@ else
         exit 0
     fi
 
-    cp ../charmm36-jul2022.ff .
+    cp ../charmm36-jul2022.ff . -r
 
     # Skip pdb2gmx if a .gro file is provided with -g flag
     if [ -n "$gro_file" ]; then
