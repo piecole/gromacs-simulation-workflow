@@ -222,16 +222,20 @@ else
          echo "grompp for ions failed. Check $run_dir/ions_grompp_error.log for details."
          exit 1
     fi
-    echo "16" | gmx genion -s ions.tpr \
+    echo "SOL" | gmx genion -s ions.tpr \
                           -o struc_solv_ions.gro \
                           -p topol.top \
-                          -pname NA -nname CL -neutral
+                          -pname NA -nname CL -neutral 2> genion_error.log
+    if [ $? -ne 0 ]; then
+         echo "genion failed. Check $run_dir/genion_error.log for details."
+         exit 1
+    fi
 
     # Energy minimization.
     echo "Energy minimization..."
     gmx grompp -f minim.mdp -c struc_solv_ions.gro -p topol.top -o em.tpr
     gmx mdrun -v -deffnm em -s em.tpr -ntmpi 1
-    echo "11 0" | gmx energy -f em.edr -o potential.xvg
+    echo "Potential" | gmx energy -f em.edr -o potential.xvg
     if [ $? -ne 0 ]; then
          echo "Energy minimization failed."
          exit 1
@@ -241,7 +245,7 @@ else
     echo "Temperature equilibration..."
     gmx grompp -f nvt.mdp -c em.gro -r em.gro -p topol.top -o nvt.tpr
     gmx mdrun -deffnm nvt -s nvt.tpr
-    echo "17 0" | gmx energy -f nvt.edr -o temperature.xvg
+    echo "Temperature" | gmx energy -f nvt.edr -o temperature.xvg
     if [ $? -ne 0 ]; then
          echo "NVT equilibration failed."
          exit 1
@@ -252,8 +256,8 @@ else
     gmx grompp -f npt.mdp -c nvt.gro -r nvt.gro -t nvt.cpt \
               -p topol.top -o npt.tpr
     gmx mdrun -deffnm npt -s npt.tpr
-    echo "18 0" | gmx energy -f npt.edr -o pressure.xvg
-    echo "24 0" | gmx energy -f npt.edr -o density.xvg
+    echo "Pressure" | gmx energy -f npt.edr -o pressure.xvg
+    echo "Density" | gmx energy -f npt.edr -o density.xvg
     if [ $? -ne 0 ]; then
          echo "NPT equilibration failed."
          exit 1
@@ -316,9 +320,19 @@ run_production() {
          exit 1
     fi
 
+    echo "Getting energy groups from md_energy.mdp."
+    groups=$(grep "energygrps" md_energy.mdp | awk -F'=' '{print $2}' | xargs)
+    group1=$(echo "$groups" | awk '{print $1}')
+    group2=$(echo "$groups" | awk '{print $2}')
+    echo "Energy groups: $group1 and $group2"
+
     echo "Extracting interaction energy."
-    echo "22 23 0" | gmx energy -f md_0_1_energy.edr -o interaction_energy.xvg
-}
+    echo -e "Coul-SR:${group1}-${group2}\nLJ-SR:${group1}-${group2}" | \
+    gmx energy -f md_0_1_energy.edr -o interaction_energy.xvg
+    
+    }
 
 # Execute the production run (and energy calculation) block.
 run_production
+
+echo "Production run and energy calculation complete."
