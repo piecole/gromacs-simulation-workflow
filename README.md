@@ -11,7 +11,7 @@ This repository contains a SLURM-based workflow script for running GROMACS molec
 ## Usage
 
 ```bash
-sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]
+sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t]
 ```
 
 ### Arguments
@@ -22,6 +22,7 @@ sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp
 - `-n`: Specify a index file
 - `-s`: Stop the process just before pdb2gmx
 - `-g gro_file`: Continue the process from after pdb2gmx with the specified .gro file
+- `-t`: Force generation of new TPR file using existing checkpoint. Useful when you want to modify simulation parameters (e.g., extend simulation time) while keeping the same trajectory.
 
 ## Workflow Steps
 
@@ -84,6 +85,10 @@ sbatch run_full_gromacs_flow.sh protein_A run1 -s
 
 # Continuing with a custom GRO file
 sbatch run_full_gromacs_flow.sh protein_A run1 -g path/to/custom.gro
+
+# Extending simulation with modified parameters
+sbatch run_full_gromacs_flow.sh protein_A run1 -r -t
+sbatch run_full_gromacs_flow.sh protein_A run1 -r -t -m extended_md.mdp
 ```
 
 ## Workflow Control

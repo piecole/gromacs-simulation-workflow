@@ -11,7 +11,7 @@
 # Help flag
 if [ "$1" == "-h" ]; then
     echo "This script sets up and runs a full GROMACS simulation workflow."
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t]"
     echo "Required arguments:"
     echo "  <input_file>    : Base name of the input PDB file (without .pdb extension)"
     echo "  <indicator>     : Unique identifier for this run"
@@ -21,6 +21,7 @@ if [ "$1" == "-h" ]; then
     echo "  -n custom_index.ndx : Specify a custom index file"
     echo "  -s             : Stop the process just before pdb2gmx"
     echo "  -g gro_file    : Continue the process from after pdb2gmx with the specified .gro file"
+    echo "  -t             : Force generation of new TPR file using existing checkpoint"
     echo "Requirements:"
     echo "[input].pdb, ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp (or other file), md_energy.mdp, index.ndx (or other file)"
     exit 0
@@ -29,7 +30,7 @@ fi
 # Check for required arguments
 if [ $# -lt 2 ]; then
     echo "Error: Missing required arguments"
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t]"
     exit 1
 fi
 
@@ -43,9 +44,10 @@ production_mdp="md.mdp"
 resume_flag=false
 stop_before_pdb2gmx=false
 gro_file=""
+force_new_tpr=false
 
 # Parse optional arguments
-while getopts "rm:n:sg:" opt; do
+while getopts "rm:n:sg:t" opt; do
     case $opt in
         r)
             resume_flag=true
@@ -74,9 +76,12 @@ while getopts "rm:n:sg:" opt; do
             fi
             gro_file="$OPTARG"
             ;;
+        t)
+            force_new_tpr=true
+            ;;
         \?)
             echo "Invalid option: -$OPTARG"
-            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file]"
+            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t]"
             exit 1
             ;;
     esac
@@ -93,6 +98,7 @@ echo "Production MDP: $production_mdp"
 echo "Index file: $index_file"
 echo "Stop before pdb2gmx: $stop_before_pdb2gmx"
 echo "Gro file: $gro_file"
+echo "Force new TPR: $force_new_tpr"
 echo "Run directory: $run_dir"
 
 # Copy mdp files and make rundir  if rundir doesn't exist.
@@ -268,10 +274,25 @@ fi
 # Production run and energy calculation as one function.
 run_production() {
     # If final .gro file exists, skip the production run.
-    if [ -f "md_0_1.gro" ]; then
+    if [ -f "md_0_1.gro" ] && [ "$force_new_tpr" = false ]; then
          echo "Final .gro file found. Skipping production run."
-    elif [ -f "md_0_1.cpt" ]; then # If a checkpoint file exists, resume the production run.
-         echo "Checkpoint file found. Resuming production MD from checkpoint."
+    elif [ -f "md_0_1.cpt" ] && [ "$force_new_tpr" = false ]; then # If a checkpoint file exists, resume the production run.
+         echo "Checkpoint file found."
+         if [ "$force_new_tpr" = true ]; then
+             echo "Force flag detected. Generating new TPR file from checkpoint."
+             # grep production mdp for gen-vel, if gen-vel is yes then
+             # return an error. This must be false if you want to continue
+             # from a checkpoint properly including the velocities.
+             gen_vel=$(sed -n 's/^gen_vel[ \t]*=[ \t]*\([^ \t;]*\).*/\1/p' "$production_mdp")
+
+             if [ "${gen_vel,,}" = "yes" ]; then
+                 echo "Error: gen_vel = yes in $production_mdp. Please set gen_vel = no to continue from a checkpoint."
+                 exit 1
+             fi
+
+             gmx grompp -f "$production_mdp" -c npt.gro -t npt.cpt -p topol.top -n "$index_file" -o md_0_1.tpr
+         fi
+         echo "Resuming production MD from checkpoint. See readout at $run_dir/md_0_1_error.log"
          # Execute the production run with pullx and pullf files if they exist.
          # For some reason omitting this only gives an error when a run is resumed.
          if [ -f "md_0_1_pullx.xvg" ] && [ -f "md_0_1_pullf.xvg" ]; then
@@ -302,6 +323,7 @@ run_production() {
          # Create the production run TPR.
          gmx grompp -f "$production_mdp" -c npt.gro -t npt.cpt -p topol.top -n "$index_file" -o md_0_1.tpr
          # Execute production run
+         echo "Executing production run. See readout at $run_dir/md_0_1_error.log"
          gmx mdrun -deffnm md_0_1 \
                    -s md_0_1.tpr \
                    -v -stepout 10000 2> md_0_1_error.log
@@ -314,6 +336,7 @@ run_production() {
     # Energy calculation steps.
     gmx grompp -f md_energy.mdp -c md_0_1.gro \
               -p topol.top -o md_0_1_energy.tpr -n "$index_file"
+    echo "Executing energy calculation. See readout at $run_dir/md_0_1_energy.log"
     gmx mdrun -s md_0_1_energy.tpr \
               -rerun md_0_1.xtc \
               -deffnm md_0_1_energy \
