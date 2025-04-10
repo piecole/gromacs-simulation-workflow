@@ -84,7 +84,7 @@ sbatch run_full_gromacs_flow.sh protein_A run1 -r
 sbatch run_full_gromacs_flow.sh protein_A run1 -s
 
 # Continuing with a custom GRO file
-sbatch run_full_gromacs_flow.sh protein_A run1 -g path/to/custom.gro
+sbatch run_full_gromacs_flow.sh protein_A run1 -r -g path/to/custom.gro
 
 # Extending simulation with modified parameters
 sbatch run_full_gromacs_flow.sh protein_A run1 -r -t
