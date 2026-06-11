@@ -319,9 +319,14 @@ run_production() {
              echo "Please create an index file using 'gmx make_ndx' before proceeding with the production run. Indicate index file with the -n flag."
              echo "You can then resume the workflow from here by using the -r flag."
              echo "----------------------------------------"
-             echo "Example:"
-             echo "module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0"
-             echo "gmx make_ndx -f npt.gro -o index.ndx"
+             echo "Load:"
+             echo "> module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0"
+             echo "To identify chains:"
+             echo "> grep -v SOL npt.gro | grep CA"
+             echo "To create index file:"
+             echo "> gmx make_ndx -f <structure>_<run_indicator>.pdb -o index.ndx"
+             echo "To resume the workflow:"
+             echo "> sbatch run_full_gromacs_flow.sh <structure> <run_indicator> -r"
              echo "----------------------------------------"
              exit 1
          else
