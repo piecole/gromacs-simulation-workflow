@@ -46,4 +46,4 @@ DispCorr                = EnerPres  ; account for cut-off vdW scheme
 gen_vel                 = no        ; Velocity generation is off 
 
 
-energygrps = PEPD p53
+energygrps = XRCC4 IFFO1 ; Change this to the groups specified in the index file
