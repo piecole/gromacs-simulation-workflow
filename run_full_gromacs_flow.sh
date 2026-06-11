@@ -41,6 +41,7 @@ shift 2
 
 # Initialize variables
 production_mdp="md.mdp"
+index_file="index.ndx"
 resume_flag=false
 stop_before_pdb2gmx=false
 gro_file=""
@@ -317,6 +318,11 @@ run_production() {
              echo "Index file '$index_file' not found."
              echo "Please create an index file using 'gmx make_ndx' before proceeding with the production run. Indicate index file with the -n flag."
              echo "You can then resume the workflow from here by using the -r flag."
+             echo "----------------------------------------"
+             echo "Example:"
+             echo "module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0"
+             echo "gmx make_ndx -f npt.gro -o index.ndx"
+             echo "----------------------------------------"
              exit 1
          else
              cp "../$index_file" .
