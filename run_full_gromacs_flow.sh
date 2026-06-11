@@ -360,7 +360,7 @@ run_production() {
     echo "Extracting interaction energy."
     echo -e "Coul-SR:${group1}-${group2}\nLJ-SR:${group1}-${group2}" | \
     gmx energy -f md_0_1_energy.edr -o interaction_energy.xvg
-    
+
     }
 
 # Execute the production run (and energy calculation) block.
