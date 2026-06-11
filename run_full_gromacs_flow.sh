@@ -250,7 +250,7 @@ else
     # NVT equilibration.
     echo "Temperature equilibration..."
     gmx grompp -f nvt.mdp -c em.gro -r em.gro -p topol.top -o nvt.tpr
-    gmx mdrun -deffnm nvt -s nvt.tpr
+    gmx mdrun -deffnm nvt -s nvt.tpr -ntmpi 1 -ntomp 16
     echo "Temperature" | gmx energy -f nvt.edr -o temperature.xvg
     if [ $? -ne 0 ]; then
          echo "NVT equilibration failed."
@@ -261,7 +261,7 @@ else
     echo "Pressure equilibration..."
     gmx grompp -f npt.mdp -c nvt.gro -r nvt.gro -t nvt.cpt \
               -p topol.top -o npt.tpr
-    gmx mdrun -deffnm npt -s npt.tpr
+    gmx mdrun -deffnm npt -s npt.tpr -ntmpi 1 -ntomp 16
     echo "Pressure" | gmx energy -f npt.edr -o pressure.xvg
     echo "Density" | gmx energy -f npt.edr -o density.xvg
     if [ $? -ne 0 ]; then
@@ -301,11 +301,13 @@ run_production() {
                         -cpi md_0_1.cpt \
                         -px md_0_1_pullx.xvg \
                         -pf md_0_1_pullf.xvg \
+                        -ntmpi 1 -ntomp 16 \
                         -v -stepout 10000 2> md_0_1_error.log
          else
               gmx mdrun -deffnm md_0_1 \
                         -s md_0_1.tpr \
                         -cpi md_0_1.cpt \
+                        -ntmpi 1 -ntomp 16 \
                         -v -stepout 10000 2> md_0_1_error.log
          fi
     else # If no checkpoint file exists, start the production run from the beginning.
@@ -326,6 +328,7 @@ run_production() {
          echo "Executing production run. See readout at $run_dir/md_0_1_error.log"
          gmx mdrun -deffnm md_0_1 \
                    -s md_0_1.tpr \
+                   -ntmpi 1 -ntomp 16 \
                    -v -stepout 10000 2> md_0_1_error.log
     fi
     if [ $? -ne 0 ]; then # If the production run fails, exit with an error message.
