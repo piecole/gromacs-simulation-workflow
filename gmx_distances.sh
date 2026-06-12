@@ -91,9 +91,11 @@ for traj in "${trajectories[@]}"; do
     # Build a selection for every unique pair of custom groups, measuring the
     # distance between their centres of mass.
     select_str=""
+    echo "Pairs:"
     for ((a = 0; a < ${#custom_groups[@]}; a++)); do
         for ((b = a + 1; b < ${#custom_groups[@]}; b++)); do
             pair="com of group \"${custom_groups[a]}\" plus com of group \"${custom_groups[b]}\""
+            echo " $pair"
             if [ -z "$select_str" ]; then
                 select_str="$pair"
             else
@@ -129,6 +131,7 @@ for traj in "${trajectories[@]}"; do
         fi
     fi
 
+    echo "Running gmx distance..."
     gmx distance -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
         -select "$select_str" -oall results/distance_${out_base}_${index_file%.ndx}.xvg
 done
