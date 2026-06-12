@@ -118,6 +118,7 @@ for traj in "${trajectories[@]}"; do
     dt_opt=()
     if [ "$max_frames" -gt 0 ]; then
         # gmx check prints e.g. "Step  5001  2.000" -> #frames, timestep (ps).
+        echo "Checking frame count and timestep for $traj..."
         read -r nframes dt_orig < <(gmx check -f "$traj" 2>&1 | awk '/^Step/ {print $2, $3}')
         if [ -z "$nframes" ] || [ -z "$dt_orig" ]; then
             echo " Could not determine frame count/timestep for $traj; using every frame."
