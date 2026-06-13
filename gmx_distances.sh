@@ -1,4 +1,13 @@
 #!/bin/bash
+#SBATCH --time=12:00:00
+#SBATCH --partition=cpu
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=8G
+#SBATCH --job-name=gromacs_distances
+#SBATCH --output=gromacs-distances-%j.out
+#SBATCH --mail-type=BEGIN,END,FAIL
+
+module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0
 
 # Measure pairwise distances between all *custom* (user-defined) index groups
 # for every trajectory found in the subdirectories.
@@ -37,6 +46,15 @@ while getopts "i:m:h" opt; do
     esac
 done
 
+# Parallelism = the CPUs this job was actually allocated. Prefer the SLURM
+# allocation (cgroup-limited) over nproc, which on a shared node reports every
+# core on the machine, not just the ones we may safely use.
+jobs=${SLURM_CPUS_PER_TASK:-${SLURM_JOB_CPUS_PER_NODE:-$(nproc 2>/dev/null || echo 1)}}
+
+# Each gmx distance job is essentially serial; pin OpenMP to 1 thread so that
+# J parallel jobs don't oversubscribe the cores by each spawning many threads.
+export OMP_NUM_THREADS=1
+
 # Standard GROMACS groups that should NOT be treated as custom selections.
 default_groups=(
     "System" "Protein" "Protein-H" "C-alpha" "Backbone" "MainChain"
@@ -45,20 +63,11 @@ default_groups=(
     "DNA" "RNA" "NA" "CL" "K" "MG" "CA" "ZN" "NA+" "CL-"
 )
 
-module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0
-
-# Find all trajectories in subdirectories (actual files, not directories).
-trajectories=( */*.xtc )
-
-if [ ${#trajectories[@]} -eq 0 ]; then
-    echo "No *.xtc files found in subdirectories."
-    exit 1
-fi
-
-# Make a results directory
-mkdir -p results
-
-for traj in "${trajectories[@]}"; do
+# Process a single trajectory: find its custom groups, build the pairwise COM
+# selection, and write all distances to one .xvg. Run as a background job; each
+# invocation is its own subshell, so variables and output files never collide.
+process_traj() {
+    traj="$1"
     echo "----------------------------------------"
     echo "Processing $traj"
 
@@ -83,7 +92,7 @@ for traj in "${trajectories[@]}"; do
 
     if [ ${#custom_groups[@]} -lt 2 ]; then
         echo " Skipping $traj: need at least 2 custom groups, found ${#custom_groups[@]} (${custom_groups[*]})"
-        continue
+        return
     fi
 
     echo " Custom groups: ${custom_groups[*]}"
@@ -109,7 +118,7 @@ for traj in "${trajectories[@]}"; do
 
     if [ ! -f "$tpr" ]; then
         echo " Skipping $traj: no matching $tpr"
-        continue
+        return
     fi
 
     # Subsample on the fly: gmx distance processes every frame, so we tell it to
@@ -146,4 +155,33 @@ for traj in "${trajectories[@]}"; do
     echo "Running gmx distance..."
     gmx distance -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
         -select "$select_str" -oall results/distance_${out_base}_${index_file%.ndx}.xvg
+}
+
+# Find all trajectories in subdirectories (actual files, not directories).
+trajectories=( */*.xtc )
+
+if [ ${#trajectories[@]} -eq 0 ]; then
+    echo "No *.xtc files found in subdirectories."
+    exit 1
+fi
+
+mkdir -p results
+
+echo "Processing ${#trajectories[@]} trajectories, up to $jobs in parallel..."
+
+# Launch one background job per trajectory, capping concurrency at $jobs.
+# `wait -n` blocks until any single job finishes before we start the next.
+running=0
+for traj in "${trajectories[@]}"; do
+    process_traj "$traj" &
+    running=$((running + 1))
+    if [ "$running" -ge "$jobs" ]; then
+        wait -n
+        running=$((running - 1))
+    fi
 done
+
+# Wait for the remaining jobs to finish before exiting.
+wait
+echo "----------------------------------------"
+echo "All trajectories done. Results in results/"

@@ -375,9 +375,53 @@ run_production() {
     echo -e "Coul-SR:${group1}-${group2}\nLJ-SR:${group1}-${group2}" | \
     gmx energy -f md_0_1_energy.edr -o interaction_energy.xvg
 
+    echo "Calculating interaction surface area (buried surface area / BSA)."
+    # SASA is computed for each binding partner in isolation and for the
+    # complex. gmx sasa ignores atoms outside the -surface selection, so the
+    # two single-partner runs report free-state SASA. The buried (interface)
+    # surface area then follows from BSA = SASA_1 + SASA_2 - SASA_complex.
+    gmx sasa -f md_0_1.xtc -s md_0_1_energy.tpr -n "$index_file" \
+             -surface "group \"$group1\"" \
+             -o "sasa_${group1}.xvg" 2> "sasa_${group1}.log"
+    gmx sasa -f md_0_1.xtc -s md_0_1_energy.tpr -n "$index_file" \
+             -surface "group \"$group2\"" \
+             -o "sasa_${group2}.xvg" 2> "sasa_${group2}.log"
+    gmx sasa -f md_0_1.xtc -s md_0_1_energy.tpr -n "$index_file" \
+             -surface "group \"$group1\" or group \"$group2\"" \
+             -o "sasa_complex.xvg" 2> "sasa_complex.log"
+
+    if [ ! -f "sasa_${group1}.xvg" ] || [ ! -f "sasa_${group2}.xvg" ] || [ ! -f "sasa_complex.xvg" ]; then
+         echo "Error: SASA calculation failed. Check sasa_*.log for details."
+         exit 1
+    fi
+
+    # Combine the per-frame SASA values into the buried surface area.
+    grep -v '^[#@]' "sasa_${group1}.xvg" | awk '{print $1, $2}' > sasa_1.tmp
+    grep -v '^[#@]' "sasa_${group2}.xvg" | awk '{print $2}'      > sasa_2.tmp
+    grep -v '^[#@]' "sasa_complex.xvg"   | awk '{print $2}'      > sasa_c.tmp
+
+    {
+        echo "@    title \"Interaction (buried) surface area\""
+        echo "@    xaxis  label \"Time (ps)\""
+        echo "@    yaxis  label \"Area (nm\\S2\\N)\""
+        echo "@ s0 legend \"Buried surface area (BSA)\""
+        echo "@ s1 legend \"Interface area (BSA/2)\""
+        paste sasa_1.tmp sasa_2.tmp sasa_c.tmp | awk '{
+            bsa = $2 + $3 - $4;
+            printf "%s %.4f %.4f\n", $1, bsa, bsa/2.0
+        }'
+    } > interaction_surface_area.xvg
+
+    # Report the mean buried surface area over the trajectory.
+    mean_bsa=$(paste sasa_1.tmp sasa_2.tmp sasa_c.tmp | awk '{
+        bsa = $2 + $3 - $4; sum += bsa; n++
+    } END { if (n > 0) printf "%.4f", sum/n }')
+    echo "Mean buried surface area: ${mean_bsa} nm^2 (mean interface area: $(awk "BEGIN{printf \"%.4f\", ${mean_bsa}/2.0}") nm^2)"
+
+    rm -f sasa_1.tmp sasa_2.tmp sasa_c.tmp
     }
 
 # Execute the production run (and energy calculation) block.
 run_production
 
-echo "Production run and energy calculation complete."
+echo "Production run, energy, and surface area calculation complete."
