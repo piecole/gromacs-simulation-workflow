@@ -115,20 +115,31 @@ for traj in "${trajectories[@]}"; do
     # Subsample on the fly: gmx distance processes every frame, so we tell it to
     # only read one frame every dt_new ps, targeting ~max_frames frames total.
     # (The trajectory-analysis tools support -b/-e/-dt but not -skip.)
+    #
+    # We read the timing from the .tpr, which is instant, rather than from
+    # `gmx check -f`, which has to stream the whole trajectory to count frames.
     dt_opt=()
     if [ "$max_frames" -gt 0 ]; then
-        # gmx check prints e.g. "Step  5001  2.000" -> #frames, timestep (ps).
-        echo "Checking frame count and timestep for $traj..."
-        read -r nframes dt_orig < <(gmx check -f "$traj" 2>&1 | awk '/^Step/ {print $2, $3}')
-        if [ -z "$nframes" ] || [ -z "$dt_orig" ]; then
-            echo " Could not determine frame count/timestep for $traj; using every frame."
-        elif [ "$nframes" -le "$max_frames" ]; then
-            echo " $nframes frames (<= $max_frames); using every frame."
+        # Pull dt (ps/step), nsteps, and the xtc write interval from the .tpr.
+        read -r dt nsteps nstout < <(gmx dump -s "$tpr" 2>/dev/null | awk '
+            /^[[:space:]]*dt[[:space:]]*=/                 {dt=$NF}
+            /^[[:space:]]*nsteps[[:space:]]*=/             {ns=$NF}
+            /(nstxout-compressed|nstxtcout)[[:space:]]*=/  {no=$NF}
+            (dt!="" && ns!="" && no!="")                   {print dt, ns, no; exit}')
+
+        if [ -z "$dt" ] || [ -z "$nstout" ] || [ "$nstout" -eq 0 ]; then
+            echo " Could not read timing from $tpr; using every frame."
         else
-            skip=$(( (nframes + max_frames - 1) / max_frames ))
-            dt_new=$(awk -v d="$dt_orig" -v s="$skip" 'BEGIN { printf "%g", d * s }')
-            echo " $nframes frames -> -dt $dt_new ps (~$(( nframes / skip )) frames)"
-            dt_opt=(-dt "$dt_new")
+            frame_dt=$(awk -v d="$dt" -v n="$nstout" 'BEGIN { printf "%g", d * n }')
+            total_frames=$(( nsteps / nstout + 1 ))
+            if [ "$total_frames" -le "$max_frames" ]; then
+                echo " ~$total_frames frames (<= $max_frames); using every frame."
+            else
+                skip=$(( (total_frames + max_frames - 1) / max_frames ))
+                dt_new=$(awk -v f="$frame_dt" -v s="$skip" 'BEGIN { printf "%g", f * s }')
+                echo " ~$total_frames frames -> -dt $dt_new ps (~$(( total_frames / skip )) frames)"
+                dt_opt=(-dt "$dt_new")
+            fi
         fi
     fi
 
