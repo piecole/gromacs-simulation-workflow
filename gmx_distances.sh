@@ -17,22 +17,29 @@ module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0
 
 index_file="index.ndx"
 max_frames=1000
+center_group="Protein"
 
 usage() {
-    echo "Usage: gmx_distances.sh [-i index_file] [-m max_frames]"
+    echo "Usage: gmx_distances.sh [-i index_file] [-m max_frames] [-c center_group]"
     echo "  -i index_file    Name of the index (.ndx) file to use (default: index.ndx)"
     echo "  -m max_frames    Subsample each trajectory down to ~this many frames"
     echo "                   to speed up the distance calculation (default: 1000;"
     echo "                   use 0 to disable subsampling and use every frame)"
+    echo "  -c center_group  Index group to cluster + center on before measuring"
+    echo "                   distances, so the assembly stays whole across PBC"
+    echo "                   (default: Protein; must exist in the index file)"
 }
 
-while getopts "i:m:h" opt; do
+while getopts "i:m:c:h" opt; do
     case $opt in
         i)
             index_file=$OPTARG
             ;;
         m)
             max_frames=$OPTARG
+            ;;
+        c)
+            center_group=$OPTARG
             ;;
         h)
             usage
@@ -121,9 +128,9 @@ process_traj() {
         return
     fi
 
-    # Subsample on the fly: gmx distance processes every frame, so we tell it to
-    # only read one frame every dt_new ps, targeting ~max_frames frames total.
-    # (The trajectory-analysis tools support -b/-e/-dt but not -skip.)
+    # Work out the subsampling step: we want ~max_frames frames total, so we
+    # read one frame every dt_new ps. This -dt is handed to the trjconv pass
+    # below, which writes the trimmed (and centered) trajectory.
     #
     # We read the timing from the .tpr, which is instant, rather than from
     # `gmx check -f`, which has to stream the whole trajectory to count frames.
@@ -152,9 +159,30 @@ process_traj() {
         fi
     fi
 
+    # Preprocess with trjconv before measuring distances. Raw trajectories let
+    # the assembly drift across a box face, so one group's atoms (or a whole
+    # chain) can end up imaged on the far side of the box and the COM distance
+    # spikes. -pbc cluster reassembles everything in "$center_group" into one
+    # contiguous cluster, then -center puts it in the middle of a compact box.
+    # We also apply the subsampling here (-dt) so the trimmed, centered .xtc is
+    # what gmx distance reads.
+    centered="${traj%.xtc}_centered.xtc"
+    echo "Centering on \"$center_group\" with trjconv (-pbc cluster -center)..."
+    # trjconv prompts, in order: clustering group, centering group, output group.
+    printf '%s\n%s\n%s\n' "$center_group" "$center_group" "System" \
+        | gmx trjconv -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
+            -pbc cluster -center -ur compact -o "$centered"
+
+    if [ ! -f "$centered" ]; then
+        echo " trjconv did not produce $centered; skipping $traj."
+        echo " (Does the group \"$center_group\" exist in $index_file?)"
+        return
+    fi
+
     echo "Running gmx distance..."
+    # The trajectory is now whole and centered, so no -dt is needed here.
     # whole_mol_com: COM from intact molecules; -pbc/-rmpbc: minimum-image distances.
-    gmx distance -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
+    gmx distance -f "$centered" -s "$tpr" -n "$index_file" \
         -seltype whole_mol_com -selrpos whole_mol_com -pbc -rmpbc \
         -select "$select_str" -oall results/distance_${out_base}_${index_file%.ndx}.xvg
 }
