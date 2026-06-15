@@ -17,7 +17,10 @@ module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0
 
 index_file="index.ndx"
 max_frames=1000
-center_group="Protein"
+# Group number to cluster + center on. Group 1 is Protein in GROMACS' default
+# numbering (group 0 is always System), so the default just works for protein
+# systems. Using a number avoids ambiguity when the .ndx has duplicate names.
+center_group="1"
 
 usage() {
     echo "Usage: gmx_distances.sh [-i index_file] [-m max_frames] [-c center_group]"
@@ -25,9 +28,10 @@ usage() {
     echo "  -m max_frames    Subsample each trajectory down to ~this many frames"
     echo "                   to speed up the distance calculation (default: 1000;"
     echo "                   use 0 to disable subsampling and use every frame)"
-    echo "  -c center_group  Index group to cluster + center on before measuring"
-    echo "                   distances, so the assembly stays whole across PBC"
-    echo "                   (default: Protein; must exist in the index file)"
+    echo "  -c center_group  Index group NUMBER to cluster + center on before"
+    echo "                   measuring distances, so the assembly stays whole"
+    echo "                   across PBC (default: 1, which is Protein in GROMACS'"
+    echo "                   default numbering)"
 }
 
 while getopts "i:m:c:h" opt; do
@@ -167,15 +171,16 @@ process_traj() {
     # We also apply the subsampling here (-dt) so the trimmed, centered .xtc is
     # what gmx distance reads.
     centered="${traj%.xtc}_centered.xtc"
-    echo "Centering on \"$center_group\" with trjconv (-pbc cluster -center)..."
+
+    echo "Centering on group $center_group with trjconv (-pbc cluster -center)..."
     # trjconv prompts, in order: clustering group, centering group, output group.
-    printf '%s\n%s\n%s\n' "$center_group" "$center_group" "System" \
+    printf '%s\n%s\n%s\n' "$center_group" "$center_group" "0" \
         | gmx trjconv -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
             -pbc cluster -center -ur compact -o "$centered"
 
     if [ ! -f "$centered" ]; then
         echo " trjconv did not produce $centered; skipping $traj."
-        echo " (Does the group \"$center_group\" exist in $index_file?)"
+        echo " (Does group $center_group exist in $index_file?)"
         return
     fi
 
