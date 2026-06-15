@@ -153,7 +153,9 @@ process_traj() {
     fi
 
     echo "Running gmx distance..."
-    gmx distance -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
+    # whole_mol_com: COM from intact molecules; -pbc/-rmpbc: minimum-image distances.
+    gmx distance -f "$work_traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
+        -seltype whole_mol_com -selrpos whole_mol_com -pbc -rmpbc \
         -select "$select_str" -oall results/distance_${out_base}_${index_file%.ndx}.xvg
 }
 

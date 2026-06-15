@@ -14,11 +14,16 @@
 *.top
 *.itp
 
-# Temporary files
+# Temporary files/folders
 *~
 *.bak
 *.swp
 .DS_Store
+**/__pycache__/
+*.ipynb
 
 # venv
 venv/
+
+# results
+results/
