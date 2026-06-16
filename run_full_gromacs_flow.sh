@@ -303,12 +303,16 @@ run_production() {
                         -px md_0_1_pullx.xvg \
                         -pf md_0_1_pullf.xvg \
                         -ntmpi 1 -ntomp 16 \
+                        -nb gpu \
+                        -pme gpu \
                         -v -stepout 10000 2> md_0_1_error.log
          else
               gmx mdrun -deffnm md_0_1 \
                         -s md_0_1.tpr \
                         -cpi md_0_1.cpt \
                         -ntmpi 1 -ntomp 16 \
+                        -nb gpu \
+                        -pme gpu \
                         -v -stepout 10000 2> md_0_1_error.log
          fi
     else # If no checkpoint file exists, start the production run from the beginning.
