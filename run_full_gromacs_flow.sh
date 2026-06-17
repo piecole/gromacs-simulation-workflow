@@ -34,6 +34,15 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
+echo "------- git info -------"
+echo "commit:"
+git rev-parse HEAD
+echo "branch:"
+git branch --show-current
+echo "status:"
+git status
+echo "------------------------"
+
 # Parse arguments
 input_file=$1
 indicator=$2
