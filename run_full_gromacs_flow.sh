@@ -344,6 +344,8 @@ run_production() {
          gmx mdrun -deffnm md_0_1 \
                    -s md_0_1.tpr \
                    -ntmpi 1 -ntomp 16 \
+                   -nb gpu \
+                   -pme gpu \
                    -v -stepout 10000 2> md_0_1_error.log
     fi
     if [ $? -ne 0 ]; then # If the production run fails, exit with an error message.
