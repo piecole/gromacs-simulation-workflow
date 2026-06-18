@@ -27,6 +27,12 @@ def read_xvg(file_path):
                 raise IndexError("Failed to parse select string from line: " + line) from e
 
             columns = select.split("; ")
+
+        if re.match(r"@\s+s[0-9]+\s+legend", line):
+            if columns is None:
+                columns = []
+            columns.append(line.split("legend \"")[1].split("\"")[0])
+
         if re.match(r"@\s+xaxis\s+label", line):
             x_unit = line.split("label \"")[1].split("\"")[0]
         if re.match(r"@\s+yaxis\s+label", line):
