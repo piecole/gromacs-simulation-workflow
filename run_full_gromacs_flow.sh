@@ -198,7 +198,7 @@ else
     else
         # Build gmx termini string
         # First count the number of chains in the pdb file.
-        num_chains=$(grep -c "TER" struc_clean.pdb)
+        num_chains=$(grep -c "^TER" struc_clean.pdb)
         # Then build the gmx termini string.
         termini_string=""
         for ((i=1; i<=num_chains; i++)); do
@@ -337,7 +337,7 @@ run_production() {
              echo "To identify chains:"
              echo "> grep -v SOL npt.gro | grep CA"
              echo "To create index file:"
-             echo "> gmx make_ndx -f <structure>_<run_indicator>.pdb -o index.ndx"
+             echo "> gmx make_ndx -f run_<structure>_<run_indicator>/npt.gro -o index.ndx"
              echo "To resume the workflow:"
              echo "> sbatch run_full_gromacs_flow.sh <structure> <run_indicator> -r"
              echo "----------------------------------------"
