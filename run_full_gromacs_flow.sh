@@ -198,7 +198,7 @@ else
     else
         # Build gmx termini string
         # First count the number of chains in the pdb file.
-        num_chains=$(grep -c "^TER" struc_clean.pdb)
+        num_chains=$(awk '/^ATOM/ {chains[substr($0,22,1)] = 1} END {print length(chains)}' struc_clean.pdb)
         # Then build the gmx termini string.
         termini_string=""
         for ((i=1; i<=num_chains; i++)); do
