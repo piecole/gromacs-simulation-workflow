@@ -19,9 +19,8 @@ set -o pipefail
 
 index_file="index.ndx"
 max_frames=1000
-# Group number to cluster + center on. Group 1 is Protein in GROMACS' default
-# numbering (group 0 is always System), so the default just works for protein
-# systems. Using a number avoids ambiguity when the .ndx has duplicate names.
+# Group number to center the box on. Group 1 is Protein in GROMACS' default
+# numbering (group 0 is always System).
 center_group="1"
 skip_centering=false
 
@@ -31,18 +30,16 @@ usage() {
     echo "  -m max_frames    Subsample each trajectory down to ~this many frames"
     echo "                   to speed up the distance calculation (default: 1000;"
     echo "                   use 0 to disable subsampling and use every frame)"
-    echo "  -c center_group  Index group NUMBER to cluster + center on before"
-    echo "                   measuring distances, so the assembly stays whole"
-    echo "                   across PBC (default: 1, which is Protein in GROMACS'"
-    echo "                   default numbering)"
-    echo "  -s               Skip trjconv centering; measure distances on the raw"
-    echo "                   trajectory (still applies -m subsampling via gmx distance)"
+    echo "  -c center_group  Index group NUMBER to recenter the box on with"
+    echo "                   trjconv -pbc mol (default: 1, Protein)"
+    echo "  -s               Skip trjconv centering entirely; measure distances on"
+    echo "                   the raw trajectory (still applies -m subsampling)."
     echo "  -f patterns      Comma-separated trajectory paths or globs (e.g."
     echo "                   with_pept*/md_0_1.xtc). Quote the pattern if you"
     echo "                   want this script to expand the glob, not your shell."
 }
 
-while getopts "i:m:c:f:s:h" opt; do
+while getopts "i:m:c:f:sh" opt; do
     case $opt in
         i)
             index_file=$OPTARG
@@ -231,10 +228,11 @@ process_traj() {
     # Preprocess with trjconv before measuring distances. Raw trajectories let
     # the assembly drift across a box face, so one group's atoms (or a whole
     # chain) can end up imaged on the far side of the box and the COM distance
-    # spikes. -pbc cluster reassembles everything in "$center_group" into one
-    # contiguous cluster, then -center puts it in the middle of a compact box.
-    # We also apply the subsampling here (-dt) so the trimmed, centered .xtc is
-    # what gmx distance reads.
+    # spikes. -pbc mol rebuilds whole molecules from the .tpr topology (with
+    # -merge all the whole assembly is one molecule, so it stays intact) and
+    # -center puts it in the middle of a compact box. We also apply the
+    # subsampling here (-dt) so the trimmed, centered .xtc is what gmx distance
+    # reads.
     centered="${traj%.xtc}_centered.xtc"
     distance_traj="$traj"
     distance_dt_opt=()
@@ -248,11 +246,11 @@ process_traj() {
         distance_traj="$centered"
         rm -f "$centered"
 
-        echo "Centering on group $center_group with trjconv (-pbc cluster -center)..."
-        # trjconv prompts, in order: clustering group, centering group, output group.
-        if ! printf '%s\n%s\n%s\n' "$center_group" "$center_group" "0" \
+        echo "Centering on group $center_group with trjconv (-pbc mol -center)..."
+        # trjconv prompts, in order: centering group, output group.
+        if ! printf '%s\n%s\n' "$center_group" "0" \
             | gmx trjconv -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
-                -pbc cluster -center -ur compact -o "$centered"; then
+                -pbc mol -center -ur compact -o "$centered"; then
             echo " trjconv failed; skipping $traj."
             echo " (Does group $center_group exist in $index_file?)"
             rm -f "$centered"
@@ -262,7 +260,7 @@ process_traj() {
         centered_frames=$(count_traj_frames "$centered")
         if [ -z "$centered_frames" ] || [ "$centered_frames" -eq 0 ]; then
             echo " trjconv produced $centered but it has 0 readable frames."
-            echo " The source trajectory may be corrupt, or -pbc cluster failed for this system."
+            echo " The source trajectory may be corrupt."
             echo " Run: gmx check -f $traj   and   gmx check -f $centered"
             rm -f "$centered"
             return
