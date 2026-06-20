@@ -23,9 +23,10 @@ max_frames=1000
 # numbering (group 0 is always System), so the default just works for protein
 # systems. Using a number avoids ambiguity when the .ndx has duplicate names.
 center_group="1"
+skip_centering=false
 
 usage() {
-    echo "Usage: gmx_distances.sh [-i index_file] [-m max_frames] [-c center_group]"
+    echo "Usage: gmx_distances.sh [-i index_file] [-m max_frames] [-c center_group] [-s] [-f patterns]"
     echo "  -i index_file    Name of the index (.ndx) file to use (default: index.ndx)"
     echo "  -m max_frames    Subsample each trajectory down to ~this many frames"
     echo "                   to speed up the distance calculation (default: 1000;"
@@ -34,12 +35,14 @@ usage() {
     echo "                   measuring distances, so the assembly stays whole"
     echo "                   across PBC (default: 1, which is Protein in GROMACS'"
     echo "                   default numbering)"
+    echo "  -s               Skip trjconv centering; measure distances on the raw"
+    echo "                   trajectory (still applies -m subsampling via gmx distance)"
     echo "  -f patterns      Comma-separated trajectory paths or globs (e.g."
     echo "                   with_pept*/md_0_1.xtc). Quote the pattern if you"
     echo "                   want this script to expand the glob, not your shell."
 }
 
-while getopts "i:m:c:f:h" opt; do
+while getopts "i:m:c:f:s:h" opt; do
     case $opt in
         i)
             index_file=$OPTARG
@@ -49,6 +52,9 @@ while getopts "i:m:c:f:h" opt; do
             ;;
         c)
             center_group=$OPTARG
+            ;;
+        s)
+            skip_centering=true
             ;;
         f) 
             files=$OPTARG
@@ -230,12 +236,16 @@ process_traj() {
     # We also apply the subsampling here (-dt) so the trimmed, centered .xtc is
     # what gmx distance reads.
     centered="${traj%.xtc}_centered.xtc"
-    distance_traj="$centered"
+    distance_traj="$traj"
+    distance_dt_opt=()
 
-    if is_derived_traj "$traj"; then
+    if [ "$skip_centering" = true ]; then
+        echo " Skipping centering (-s); using raw trajectory."
+        distance_dt_opt=("${dt_opt[@]}")
+    elif is_derived_traj "$traj"; then
         echo " Input already centered; measuring distances directly."
-        distance_traj="$traj"
     else
+        distance_traj="$centered"
         rm -f "$centered"
 
         echo "Centering on group $center_group with trjconv (-pbc cluster -center)..."
@@ -261,9 +271,10 @@ process_traj() {
     fi
 
     echo "Running gmx distance..."
-    # The trajectory is now whole and centered, so no -dt is needed here.
     # whole_mol_com: COM from intact molecules; -pbc/-rmpbc: minimum-image distances.
+    # When centering was skipped, subsampling -dt is passed here instead of via trjconv.
     if ! gmx distance -f "$distance_traj" -s "$tpr" -n "$index_file" \
+        "${distance_dt_opt[@]}" \
         -seltype whole_mol_com -selrpos whole_mol_com -pbc -rmpbc \
         -select "$select_str" -oall results/distance_${out_base}_${index_file%.ndx}.xvg; then
         echo " gmx distance failed on $distance_traj; skipping."
