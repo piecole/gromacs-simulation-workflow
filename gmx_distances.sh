@@ -9,6 +9,8 @@
 
 module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0
 
+set -o pipefail
+
 # Measure pairwise distances between all *custom* (user-defined) index groups
 # for every trajectory found in the subdirectories.
 #
@@ -64,13 +66,27 @@ while getopts "i:m:c:f:h" opt; do
 done
 shift $((OPTIND - 1))
 
+# Skip trajectories produced by this script so a re-run does not try to
+# re-center *_centered.xtc (which would create *_centered_centered.xtc).
+is_derived_traj() {
+    [[ "$1" == *"_centered.xtc" ]]
+}
+
+# Return the number of coordinate frames in a trajectory, or empty on failure.
+count_traj_frames() {
+    gmx check -f "$1" 2>&1 | awk '/^Coords/{print $2; exit}'
+}
+
 # Find all trajectories in subdirectories, or expand the -f patterns.
 # Unquoted globs on the command line are expanded by the shell before this
 # script runs, so the first match lands in -f and the rest in $@ — merge both.
 trajectories=()
 if [ -z "$files" ] && [ $# -eq 0 ]; then
     shopt -s nullglob
-    trajectories=( */*.xtc )
+    for candidate in */*.xtc; do
+        is_derived_traj "$candidate" && continue
+        trajectories+=("$candidate")
+    done
     shopt -u nullglob
 else
     file_patterns=()
@@ -84,8 +100,10 @@ else
         pattern="${pattern#"${pattern%%[![:space:]]*}"}"
         pattern="${pattern%"${pattern##*[![:space:]]}"}"
         [ -z "$pattern" ] && continue
-        matches=( $pattern )
-        trajectories+=("${matches[@]}")
+        for match in $pattern; do
+            is_derived_traj "$match" && continue
+            trajectories+=("$match")
+        done
     done
     shopt -u nullglob
 fi
@@ -165,6 +183,14 @@ process_traj() {
         return
     fi
 
+    src_frames=$(count_traj_frames "$traj")
+    if [ -z "$src_frames" ] || [ "$src_frames" -eq 0 ]; then
+        echo " Skipping $traj: unreadable or empty (gmx check reports 0 frames)."
+        echo " Run: gmx check -f $traj"
+        return
+    fi
+    echo " Source trajectory: $src_frames frames"
+
     # Work out the subsampling step: we want ~max_frames frames total, so we
     # read one frame every dt_new ps. This -dt is handed to the trjconv pass
     # below, which writes the trimmed (and centered) trajectory.
@@ -204,25 +230,45 @@ process_traj() {
     # We also apply the subsampling here (-dt) so the trimmed, centered .xtc is
     # what gmx distance reads.
     centered="${traj%.xtc}_centered.xtc"
+    distance_traj="$centered"
 
-    echo "Centering on group $center_group with trjconv (-pbc cluster -center)..."
-    # trjconv prompts, in order: clustering group, centering group, output group.
-    printf '%s\n%s\n%s\n' "$center_group" "$center_group" "0" \
-        | gmx trjconv -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
-            -pbc cluster -center -ur compact -o "$centered"
+    if is_derived_traj "$traj"; then
+        echo " Input already centered; measuring distances directly."
+        distance_traj="$traj"
+    else
+        rm -f "$centered"
 
-    if [ ! -f "$centered" ]; then
-        echo " trjconv did not produce $centered; skipping $traj."
-        echo " (Does group $center_group exist in $index_file?)"
-        return
+        echo "Centering on group $center_group with trjconv (-pbc cluster -center)..."
+        # trjconv prompts, in order: clustering group, centering group, output group.
+        if ! printf '%s\n%s\n%s\n' "$center_group" "$center_group" "0" \
+            | gmx trjconv -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
+                -pbc cluster -center -ur compact -o "$centered"; then
+            echo " trjconv failed; skipping $traj."
+            echo " (Does group $center_group exist in $index_file?)"
+            rm -f "$centered"
+            return
+        fi
+
+        centered_frames=$(count_traj_frames "$centered")
+        if [ -z "$centered_frames" ] || [ "$centered_frames" -eq 0 ]; then
+            echo " trjconv produced $centered but it has 0 readable frames."
+            echo " The source trajectory may be corrupt, or -pbc cluster failed for this system."
+            echo " Run: gmx check -f $traj   and   gmx check -f $centered"
+            rm -f "$centered"
+            return
+        fi
+        echo " Centered trajectory: $centered_frames frames"
     fi
 
     echo "Running gmx distance..."
     # The trajectory is now whole and centered, so no -dt is needed here.
     # whole_mol_com: COM from intact molecules; -pbc/-rmpbc: minimum-image distances.
-    gmx distance -f "$centered" -s "$tpr" -n "$index_file" \
+    if ! gmx distance -f "$distance_traj" -s "$tpr" -n "$index_file" \
         -seltype whole_mol_com -selrpos whole_mol_com -pbc -rmpbc \
-        -select "$select_str" -oall results/distance_${out_base}_${index_file%.ndx}.xvg
+        -select "$select_str" -oall results/distance_${out_base}_${index_file%.ndx}.xvg; then
+        echo " gmx distance failed on $distance_traj; skipping."
+        return
+    fi
 }
 
 if [ ${#trajectories[@]} -eq 0 ]; then
