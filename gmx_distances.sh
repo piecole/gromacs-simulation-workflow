@@ -32,9 +32,12 @@ usage() {
     echo "                   measuring distances, so the assembly stays whole"
     echo "                   across PBC (default: 1, which is Protein in GROMACS'"
     echo "                   default numbering)"
+    echo "  -f patterns      Comma-separated trajectory paths or globs (e.g."
+    echo "                   with_pept*/md_0_1.xtc). Quote the pattern if you"
+    echo "                   want this script to expand the glob, not your shell."
 }
 
-while getopts "i:m:c:h" opt; do
+while getopts "i:m:c:f:h" opt; do
     case $opt in
         i)
             index_file=$OPTARG
@@ -59,13 +62,32 @@ while getopts "i:m:c:h" opt; do
             ;;
     esac
 done
+shift $((OPTIND - 1))
 
-# Find all trajectories in subdirectories (actual files, not directories).
-# or use the specified files
-if [ -z "$files" ]; then
+# Find all trajectories in subdirectories, or expand the -f patterns.
+# Unquoted globs on the command line are expanded by the shell before this
+# script runs, so the first match lands in -f and the rest in $@ — merge both.
+trajectories=()
+if [ -z "$files" ] && [ $# -eq 0 ]; then
+    shopt -s nullglob
     trajectories=( */*.xtc )
+    shopt -u nullglob
 else
-    trajectories=($files)
+    file_patterns=()
+    if [ -n "$files" ]; then
+        IFS=',' read -ra file_patterns <<< "$files"
+    fi
+    file_patterns+=("$@")
+
+    shopt -s nullglob
+    for pattern in "${file_patterns[@]}"; do
+        pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+        pattern="${pattern%"${pattern##*[![:space:]]}"}"
+        [ -z "$pattern" ] && continue
+        matches=( $pattern )
+        trajectories+=("${matches[@]}")
+    done
+    shopt -u nullglob
 fi
 
 # Parallelism = the CPUs this job was actually allocated. Prefer the SLURM
@@ -204,7 +226,7 @@ process_traj() {
 }
 
 if [ ${#trajectories[@]} -eq 0 ]; then
-    echo "No *.xtc files found in subdirectories."
+    echo "No trajectories matched."
     exit 1
 fi
 
