@@ -45,6 +45,9 @@ while getopts "i:m:c:h" opt; do
         c)
             center_group=$OPTARG
             ;;
+        f) 
+            files=$OPTARG
+            ;;
         h)
             usage
             exit 0
@@ -56,6 +59,14 @@ while getopts "i:m:c:h" opt; do
             ;;
     esac
 done
+
+# Find all trajectories in subdirectories (actual files, not directories).
+# or use the specified files
+if [ -z "$files" ]; then
+    trajectories=( */*.xtc )
+else
+    trajectories=($files)
+fi
 
 # Parallelism = the CPUs this job was actually allocated. Prefer the SLURM
 # allocation (cgroup-limited) over nproc, which on a shared node reports every
@@ -191,9 +202,6 @@ process_traj() {
         -seltype whole_mol_com -selrpos whole_mol_com -pbc -rmpbc \
         -select "$select_str" -oall results/distance_${out_base}_${index_file%.ndx}.xvg
 }
-
-# Find all trajectories in subdirectories (actual files, not directories).
-trajectories=( */*.xtc )
 
 if [ ${#trajectories[@]} -eq 0 ]; then
     echo "No *.xtc files found in subdirectories."

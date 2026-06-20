@@ -335,11 +335,11 @@ run_production() {
              echo "Load:"
              echo "> module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0"
              echo "To identify chains:"
-             echo "> grep -v SOL npt.gro | grep CA"
+             echo "> grep -v SOL $run_dir/npt.gro | grep CA"
              echo "To create index file:"
-             echo "> gmx make_ndx -f run_<structure>_<run_indicator>/npt.gro -o index.ndx"
+             echo "> gmx make_ndx -f $run_dir/npt.gro -o index.ndx"
              echo "To resume the workflow:"
-             echo "> sbatch run_full_gromacs_flow.sh <structure> <run_indicator> -r"
+             echo "> sbatch run_full_gromacs_flow.sh $input_file $indicator -r"
              echo "----------------------------------------"
              exit 1
          else
