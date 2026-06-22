@@ -211,6 +211,7 @@ else
                                        -p topol.top \
                                        -water spce \
                                        -ff charmm36-jul2022 \
+                                       -merge all \
                                        -ter -ignh 2> pdb2gmx_error.log
         if [ $? -ne 0 ]; then
              echo "pdb2gmx failed. Check $run_dir/pdb2gmx_error.log for details."
