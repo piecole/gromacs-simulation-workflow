@@ -111,22 +111,19 @@ echo "Gro file: $gro_file"
 echo "Force new TPR: $force_new_tpr"
 echo "Run directory: $run_dir"
 
-# Copy mdp files and make rundir  if rundir doesn't exist.
-if [ ! -d "$run_dir" ]; then
-    mkdir -p "$run_dir"
-    missing_file=""
-    cp ions.mdp "$run_dir" || missing_file+="ions.mdp "
-    cp minim.mdp "$run_dir" || missing_file+="minim.mdp "
-    cp nvt.mdp "$run_dir" || missing_file+="nvt.mdp "
-    cp npt.mdp "$run_dir" || missing_file+="npt.mdp "
-    cp "$production_mdp" "$run_dir" || missing_file+="$production_mdp "
-    cp md_energy.mdp "$run_dir" || missing_file+="md_energy.mdp "
-
-    if [ -n "$missing_file" ]; then
-        echo "Error: Missing file(s): $missing_file"
-        rm -r "$run_dir"
-        exit 1
+# Make the run directory if it doesn't exist, then copy any mdp files that are
+# not already present in it (so a pre-populated run directory is left intact).
+mkdir -p "$run_dir"
+missing_file=""
+for mdp in ions.mdp minim.mdp nvt.mdp npt.mdp "$production_mdp" md_energy.mdp; do
+    if [ ! -f "$run_dir/$mdp" ]; then
+        cp "$mdp" "$run_dir" || missing_file+="$mdp "
     fi
+done
+
+if [ -n "$missing_file" ]; then
+    echo "Error: Missing file(s): $missing_file"
+    exit 1
 fi
 
 # Print info about GPU allocation.
@@ -188,6 +185,10 @@ else
 
     cp ../charmm36-jul2022.ff . -r
 
+    # Structure used for the box/solvation step. Defaults to the pdb2gmx output
+    # but is overridden by the -g .gro file when provided.
+    structure_gro="struc_processed.gro"
+
     # Skip pdb2gmx if a .gro file is provided with -g flag
     if [ -n "$gro_file" ]; then
         echo "Skipping pdb2gmx and using provided .gro file: $gro_file"
@@ -195,6 +196,7 @@ else
             echo "Error: Specified .gro file '$gro_file' not found in $run_dir."
             exit 1
         fi
+        structure_gro="$gro_file"
     else
         # Build gmx termini string
         # First count the number of chains in the pdb file.
@@ -222,7 +224,7 @@ else
     fi
 
     # Create a box.
-    gmx editconf -f struc_processed.gro -o struc_newbox.gro -c -d 1.0 -bt cubic
+    gmx editconf -f "$structure_gro" -o struc_newbox.gro -c -d 1.0 -bt cubic
 
     # Solvate.
     echo "Solvating..."
