@@ -11,7 +11,7 @@
 # Help flag
 if [ "$1" == "-h" ]; then
     echo "This script sets up and runs a full GROMACS simulation workflow."
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t]"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d]"
     echo "Required arguments:"
     echo "  <input_file>    : Base name of the input PDB file (without .pdb extension)"
     echo "  <indicator>     : Unique identifier for this run"
@@ -22,6 +22,12 @@ if [ "$1" == "-h" ]; then
     echo "  -s             : Stop the process just before pdb2gmx"
     echo "  -g gro_file    : Continue the process from after pdb2gmx with the specified .gro file"
     echo "  -t             : Force generation of new TPR file using existing checkpoint"
+    echo "  -d 'y n ...'   : Disulphide answer string. When given, pdb2gmx runs with -ss and"
+    echo "                   these answers are fed to its interactive S-S prompts (one y/n per"
+    echo "                   candidate cysteine pair, in the order pdb2gmx asks). Run pdb2gmx on"
+    echo "                   the pdb manually first to confirm the order/count. When omitted, -ss"
+    echo "                   is not used and all proximal cysteines bond automatically. Example:"
+    echo "                   -d 'y n y' (use all 'n' to suppress every disulphide)."
     echo "Requirements:"
     echo "[input].pdb, ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp (or other file), md_energy.mdp, index.ndx (or other file)"
     exit 0
@@ -30,7 +36,7 @@ fi
 # Check for required arguments
 if [ $# -lt 2 ]; then
     echo "Error: Missing required arguments"
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t]"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d]"
     exit 1
 fi
 
@@ -55,9 +61,10 @@ resume_flag=false
 stop_before_pdb2gmx=false
 gro_file=""
 force_new_tpr=false
+form_disulphide=""
 
 # Parse optional arguments
-while getopts "rm:n:sg:t" opt; do
+while getopts "rm:n:sg:td:" opt; do
     case $opt in
         r)
             resume_flag=true
@@ -89,9 +96,12 @@ while getopts "rm:n:sg:t" opt; do
         t)
             force_new_tpr=true
             ;;
+        d)
+            form_disulphide=$OPTARG
+            ;;
         \?)
             echo "Invalid option: -$OPTARG"
-            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t]"
+            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d]"
             exit 1
             ;;
     esac
@@ -109,6 +119,7 @@ echo "Index file: $index_file"
 echo "Stop before pdb2gmx: $stop_before_pdb2gmx"
 echo "Gro file: $gro_file"
 echo "Force new TPR: $force_new_tpr"
+echo "Form disulphides: $form_disulphide"
 echo "Run directory: $run_dir"
 
 # Make the run directory if it doesn't exist, then copy any mdp files that are
@@ -166,16 +177,20 @@ if [ "$resume_flag" = true ]; then
 else
     echo "No resume flag detected. Running full pre-production setup."
 
-    # Check for structure file
-    if [ ! -f "$input_file.pdb" ]; then
-         echo "Error: Structure file '$input_file.pdb' not found."
-         exit 1
-    fi
-    # Clean up: remove HOH lines from the pdb file and copy it to the run directory.
-    grep -Ev "HOH|GOL|SO4|PEG|EDO|ACT|DMS|MPD|TRS|MES|HEPES" "$input_file.pdb" > "$run_dir/struc_clean.pdb"
-
     # Change to the run directory.
     cd "$run_dir" || exit 1
+
+    # When not using a custom .gro (-g), prepare the cleaned input pdb that
+    # pdb2gmx will read. With -g the input pdb is not needed at all, so we
+    # neither require it nor overwrite struc_clean.pdb.
+    if [ -z "$gro_file" ]; then
+        if [ ! -f "../$input_file.pdb" ]; then
+             echo "Error: Structure file '$input_file.pdb' not found."
+             exit 1
+        fi
+        # Clean up: remove HOH and other small molecules from the input pdb.
+        grep -Ev "HOH|GOL|SO4|PEG|EDO|ACT|DMS|MPD|TRS|MES|HEPES" "../$input_file.pdb" > struc_clean.pdb
+    fi
 
     # Stop before pdb2gmx if -s flag is set
     if [ "$stop_before_pdb2gmx" = true ]; then
@@ -208,19 +223,44 @@ else
         done
         echo "$num_chains chains found in pdb file. Running pdb2gmx with termini string: $termini_string."
         # Run pdb2gmx.
+
+        if [ -n "$form_disulphide" ]; then
+            echo "Forming disulphides with option string: $form_disulphide"
+            disulphide_option="-ss"
+            # -ss prompts (one y/n per candidate SG-SG pair) come before the
+            # terminus prompts, so prepend the answers to the termini string.
+            termini_string="${form_disulphide} ${termini_string}"
+        else
+            disulphide_option=""
+        fi
+
         echo $termini_string | gmx pdb2gmx -f struc_clean.pdb \
                                        -o struc_processed.gro \
                                        -p topol.top \
                                        -water spce \
                                        -ff charmm36-jul2022 \
                                        -merge all \
-                                       -ter -ignh 2> pdb2gmx_error.log
+                                       -ter -ignh $disulphide_option 2> pdb2gmx_error.log
         if [ $? -ne 0 ]; then
              echo "pdb2gmx failed. Check $run_dir/pdb2gmx_error.log for details."
              echo -e "\n---- Directory listing ----" >> "pdb2gmx_error.log"
              ls -halt >> "pdb2gmx_error.log"
              exit 1
         fi
+    fi
+
+    # Make solvation/ion addition idempotent. gmx solvate and gmx genion edit
+    # the [ molecules ] section of topol.top in place, so re-running setup in a
+    # directory that was already solvated would append duplicate SOL/ion lines
+    # (topology atom count then no longer matches the coordinates). We snapshot
+    # the pristine protein-only topology on the first run and restore it from
+    # that snapshot on every subsequent run, before solvating.
+    if [ ! -f topol.orig.top ]; then
+        cp topol.top topol.orig.top
+        echo "Saved pristine topology snapshot to topol.orig.top."
+    else
+        echo "Restoring pristine topology from topol.orig.top before solvation."
+        cp topol.orig.top topol.top
     fi
 
     # Create a box.
