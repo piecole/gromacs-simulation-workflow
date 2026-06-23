@@ -214,8 +214,18 @@ else
         structure_gro="$gro_file"
     else
         # Build gmx termini string
-        # First count the number of chains in the pdb file.
-        num_chains=$(awk '/^ATOM/ {chains[substr($0,22,1)] = 1} END {print length(chains)}' struc_clean.pdb)
+        # Count chains the way pdb2gmx does with the default -chainsep id_or_ter:
+        # a new chain starts at the first atom, whenever the chain-ID column
+        # changes, or after a TER record.
+        num_chains=$(awk '
+            /^TER/  { after_ter = 1; next }
+            /^ATOM/ {
+                id = substr($0, 22, 1)
+                if (atoms == 0 || after_ter || id != prev_id) count++
+                prev_id = id; after_ter = 0; atoms++
+            }
+            END { print count + 0 }
+        ' struc_clean.pdb)
         # Then build the gmx termini string.
         termini_string=""
         for ((i=1; i<=num_chains; i++)); do
