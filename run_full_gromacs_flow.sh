@@ -244,10 +244,11 @@ else
             disulphide_option=""
         fi
 
+        # TIP3P water model is more appropriate with CHARMM36 force field.
         echo $termini_string | gmx pdb2gmx -f struc_clean.pdb \
                                        -o struc_processed.gro \
                                        -p topol.top \
-                                       -water spce \
+                                       -water tip3p \
                                        -ff charmm36-jul2022 \
                                        -merge all \
                                        -ter -ignh $disulphide_option 2> pdb2gmx_error.log

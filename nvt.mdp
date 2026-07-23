@@ -15,17 +15,23 @@ constraint_algorithm    = lincs     ; holonomic constraints
 constraints             = h-bonds   ; bonds involving H are constrained
 lincs_iter              = 1         ; accuracy of LINCS
 lincs_order             = 4         ; also related to accuracy
-; Nonbonded settings 
-cutoff-scheme           = Verlet    ; Buffered neighbor searching
-ns_type                 = grid      ; search neighboring grid cells
-nstlist                 = 10        ; 20 fs, largely irrelevant with Verlet
-rcoulomb                = 1.0       ; short-range electrostatic cutoff (in nm)
-rvdw                    = 1.0       ; short-range van der Waals cutoff (in nm)
-DispCorr                = EnerPres  ; account for cut-off vdW scheme
+; Neighbour searching
+cutoff-scheme           = Verlet
+nstlist                 = 10
+verlet-buffer-tolerance = 0.005
+
 ; Electrostatics
-coulombtype             = PME       ; Particle Mesh Ewald for long-range electrostatics
-pme_order               = 4         ; cubic interpolation
-fourierspacing          = 0.16      ; grid spacing for FFT
+coulombtype             = PME
+rcoulomb                = 1.2
+pme_order               = 4
+fourierspacing          = 0.16
+
+; CHARMM36 van der Waals treatment
+vdwtype                 = Cut-off
+vdw-modifier            = Force-switch
+rvdw-switch             = 1.0
+rvdw                    = 1.2
+DispCorr                = no
 ; Temperature coupling is on
 tcoupl                  = V-rescale             ; modified Berendsen thermostat
 tc-grps                 = Protein Non-Protein   ; two coupling groups - more accurate
