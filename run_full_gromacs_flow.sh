@@ -11,7 +11,7 @@
 # Help flag
 if [ "$1" == "-h" ]; then
     echo "This script sets up and runs a full GROMACS simulation workflow."
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d]"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d] [-c '0 0 ...']"
     echo "Required arguments:"
     echo "  <input_file>    : Base name of the input PDB file (without .pdb extension)"
     echo "  <indicator>     : Unique identifier for this run"
@@ -28,6 +28,14 @@ if [ "$1" == "-h" ]; then
     echo "                   the pdb manually first to confirm the order/count. When omitted, -ss"
     echo "                   is not used and all proximal cysteines bond automatically. Example:"
     echo "                   -d 'y n y' (use all 'n' to suppress every disulphide)."
+    echo "  -c '0 0 ...'   : Termini answer string. When given, pdb2gmx runs with -ter and these"
+    echo "                   answers are fed to its terminus prompts, N-terminus then C-terminus"
+    echo "                   for each chain in chain order. For this force field the menu is"
+    echo "                   0 = NH3+ / COO-, 1 = NH2 / COOH, and the C-terminal amide cap CT2"
+    echo "                   is 2. A chain starting on GLY or PRO is offered different N-terminal"
+    echo "                   options, so run pdb2gmx manually once to confirm the numbers. When"
+    echo "                   omitted, -ter is not used and every chain gets the charged default"
+    echo "                   (NH3+ and COO-). Example: -c '0 0 0 2 0 0 0 2'."
     echo "Requirements:"
     echo "[input].pdb, ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp (or other file), md_energy.mdp, index.ndx (or other file)"
     exit 0
@@ -36,7 +44,7 @@ fi
 # Check for required arguments
 if [ $# -lt 2 ]; then
     echo "Error: Missing required arguments"
-    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d]"
+    echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d] [-c '0 0 ...']"
     exit 1
 fi
 
@@ -62,9 +70,10 @@ stop_before_pdb2gmx=false
 gro_file=""
 force_new_tpr=false
 form_disulphide=""
+termini_answers=""
 
 # Parse optional arguments
-while getopts "rm:n:sg:td:" opt; do
+while getopts "rm:n:sg:td:c:" opt; do
     case $opt in
         r)
             resume_flag=true
@@ -99,9 +108,16 @@ while getopts "rm:n:sg:td:" opt; do
         d)
             form_disulphide=$OPTARG
             ;;
+        c)
+            if [ -z "$OPTARG" ]; then
+                echo "Error: -c requires a termini answer string"
+                exit 1
+            fi
+            termini_answers=$OPTARG
+            ;;
         \?)
             echo "Invalid option: -$OPTARG"
-            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d]"
+            echo "Usage: sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d] [-c '0 0 ...']"
             exit 1
             ;;
     esac
@@ -120,6 +136,7 @@ echo "Stop before pdb2gmx: $stop_before_pdb2gmx"
 echo "Gro file: $gro_file"
 echo "Force new TPR: $force_new_tpr"
 echo "Form disulphides: $form_disulphide"
+echo "Termini answers: $termini_answers"
 echo "Run directory: $run_dir"
 
 # Make the run directory if it doesn't exist, then copy any mdp files that are
@@ -213,46 +230,35 @@ else
         fi
         structure_gro="$gro_file"
     else
-        # Build gmx termini string
-        # Count chains the way pdb2gmx does with the default -chainsep id_or_ter:
-        # a new chain starts at the first atom, whenever the chain-ID column
-        # changes, or after a TER record.
-        num_chains=$(awk '
-            /^TER/  { after_ter = 1; next }
-            /^ATOM/ {
-                id = substr($0, 22, 1)
-                if (atoms == 0 || after_ter || id != prev_id) count++
-                prev_id = id; after_ter = 0; atoms++
-            }
-            END { print count + 0 }
-        ' struc_clean.pdb)
-        # Then build the gmx termini string.
-        termini_string=""
-        for ((i=1; i<=num_chains; i++)); do
-            termini_string+="1 0 "
-        done
-        echo "$num_chains chains found in pdb file. Running pdb2gmx with termini string: $termini_string."
-        # Run pdb2gmx.
+        # Answers piped to pdb2gmx. The -ss prompts come before the -ter
+        # prompts, so disulphide answers are placed first.
+        pdb2gmx_answers=""
+        pdb2gmx_args=(-f struc_clean.pdb -o struc_processed.gro -p topol.top
+                      -water tip3p -ff charmm36-jul2022 -merge all -ignh)
 
         if [ -n "$form_disulphide" ]; then
             echo "Forming disulphides with option string: $form_disulphide"
-            disulphide_option="-ss"
-            # -ss prompts (one y/n per candidate SG-SG pair) come before the
-            # terminus prompts, so prepend the answers to the termini string.
-            termini_string="${form_disulphide} ${termini_string}"
+            pdb2gmx_args+=(-ss)
+            pdb2gmx_answers="$form_disulphide"
+        fi
+
+        if [ -n "$termini_answers" ]; then
+            echo "Selecting termini with answer string: $termini_answers"
+            pdb2gmx_args+=(-ter)
+            pdb2gmx_answers="${pdb2gmx_answers:+$pdb2gmx_answers }$termini_answers"
         else
-            disulphide_option=""
+            echo "No termini string given. Leaving off -ter, so pdb2gmx uses its default charged termini (NH3+ and COO-)."
         fi
 
         # TIP3P water model is more appropriate with CHARMM36 force field.
-        echo $termini_string | gmx pdb2gmx -f struc_clean.pdb \
-                                       -o struc_processed.gro \
-                                       -p topol.top \
-                                       -water tip3p \
-                                       -ff charmm36-jul2022 \
-                                       -merge all \
-                                       -ter -ignh $disulphide_option 2> pdb2gmx_error.log
-        if [ $? -ne 0 ]; then
+        if [ -n "$pdb2gmx_answers" ]; then
+            echo "$pdb2gmx_answers" | gmx pdb2gmx "${pdb2gmx_args[@]}" 2> pdb2gmx_error.log
+            pdb2gmx_status=${PIPESTATUS[1]}
+        else
+            gmx pdb2gmx "${pdb2gmx_args[@]}" 2> pdb2gmx_error.log
+            pdb2gmx_status=$?
+        fi
+        if [ "$pdb2gmx_status" -ne 0 ]; then
              echo "pdb2gmx failed. Check $run_dir/pdb2gmx_error.log for details."
              echo -e "\n---- Directory listing ----" >> "pdb2gmx_error.log"
              ls -halt >> "pdb2gmx_error.log"
@@ -274,8 +280,9 @@ else
         cp topol.orig.top topol.top
     fi
 
-    # Create a box.
-    gmx editconf -f "$structure_gro" -o struc_newbox.gro -c -d 1.0 -bt cubic
+    # 1.2 nm of clearance puts at least 2.4 nm between the protein and its
+    # periodic image, outside the 1.2 nm CHARMM cutoff.
+    gmx editconf -f "$structure_gro" -o struc_newbox.gro -c -d 1.2 -bt cubic
 
     # Solvate.
     echo "Solvating..."
@@ -292,10 +299,12 @@ else
          echo "grompp for ions failed. Check $run_dir/ions_grompp_error.log for details."
          exit 1
     fi
+    # -neutral cancels the protein charge; -conc adds NaCl pairs on top
+    # of that until the solvent is 0.15 mol/L.
     echo "SOL" | gmx genion -s ions.tpr \
                           -o struc_solv_ions.gro \
                           -p topol.top \
-                          -pname NA -nname CL -neutral 2> genion_error.log
+                          -pname NA -nname CL -neutral -conc 0.15 2> genion_error.log
     if [ $? -ne 0 ]; then
          echo "genion failed. Check $run_dir/genion_error.log for details."
          exit 1
