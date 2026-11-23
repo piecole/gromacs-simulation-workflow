@@ -162,7 +162,8 @@ nvidia-smi --query-gpu=index,name,driver_version --format=csv,noheader
 ### In this section I'm tweaking between loading the slurm default gromacs
 ### or a more recent docker image using singularity.
 
-module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0
+# This needs to be changed to the correct gromacs version for the cluster.
+module load gromacs/2026.1
 
 # Switched to using docker image of more recent gromacs version, due to old version
 # only seemingly being able to do one restraint at a time.
@@ -396,7 +397,7 @@ run_production() {
              echo "You can then resume the workflow from here by using the -r flag."
              echo "----------------------------------------"
              echo "Load:"
-             echo "> module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0"
+             echo "> module load gromacs/2026.1"
              echo "To identify chains:"
              echo "> grep -v SOL $run_dir/npt.gro | grep CA"
              echo "To create index file:"

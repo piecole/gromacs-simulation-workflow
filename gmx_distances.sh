@@ -7,7 +7,7 @@
 #SBATCH --output=gromacs-distances-%j.out
 #SBATCH --mail-type=BEGIN,END,FAIL
 
-module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0
+module load gromacs/2026.1
 
 set -o pipefail
 

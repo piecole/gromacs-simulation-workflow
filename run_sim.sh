@@ -7,7 +7,7 @@
 #SBATCH --job-name=gromacs
 #SBATCH --output=gromacs-test-%j.out
 
-module load gromacs/2021.5-gcc-11.4.0-cuda-11.8.0
+module load gromacs/2026.1
 export OMP_NUM_THREADS=64
 
 if [ -e "md_0_1.cpt" ]; then

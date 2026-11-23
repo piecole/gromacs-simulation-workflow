@@ -4,14 +4,14 @@ This repository contains a SLURM-based workflow script for running GROMACS molec
 
 ## Requirements
 
-- GROMACS 2021.5 or later
+- GROMACS 2026.1 (`module load gromacs/2026.1`)
 - SLURM workload manager
 - GPU with CUDA support
 
 ## Usage
 
 ```bash
-sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t]
+sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp] [-n custom_index.ndx] [-s] [-g gro_file] [-t] [-d 'y n ...'] [-c '0 0 ...']
 ```
 
 ### Arguments
@@ -23,6 +23,8 @@ sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp
 - `-s`: Stop the process just before pdb2gmx
 - `-g gro_file`: Continue the process from after pdb2gmx with the specified .gro file
 - `-t`: Force generation of new TPR file using existing checkpoint. Useful when you want to modify simulation parameters (e.g., extend simulation time) while keeping the same trajectory.
+- `-d 'y n ...'`: Disulphide answer string. When given, pdb2gmx runs with `-ss` and these y/n answers are fed to its interactive S-S prompts (one per candidate cysteine pair, in the order pdb2gmx asks). Run pdb2gmx manually first to confirm the order/count. When omitted, `-ss` is not used and all proximal cysteines bond automatically (e.g. `-d 'y n y'`, or all `n` to suppress every disulphide).
+- `-c '0 0 ...'`: Termini answer string. When given, pdb2gmx runs with `-ter` and these answers are fed to its terminus prompts, N-terminus then C-terminus for each chain in chain order. For this force field the menu is `0` = NH3+ / COO-, `1` = NH2 / COOH, and the C-terminal amide cap CT2 is `2`. A chain starting on GLY or PRO is offered different N-terminal options, so run pdb2gmx manually once to confirm the numbers. When omitted, `-ter` is not used and every chain gets the charged default (NH3+ and COO-).
 
 ## Workflow Steps
 
@@ -33,9 +35,9 @@ sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp
 
 2. **Structure Processing**:
    - Runs pdb2gmx with CHARMM36-Jul2022 force field
-   - Creates simulation box with 1.0 nm padding
-   - Solvates system with SPC/E water model
-   - Adds ions for neutralization
+   - Creates simulation box with 1.2 nm padding
+   - Solvates system with TIP3P water model
+   - Adds ions to neutralize the system and bring the salt to 0.15 M NaCl
 
 3. **Equilibration**:
    - Energy minimization
@@ -46,6 +48,7 @@ sbatch run_full_gromacs_flow.sh <input_file> <indicator> [-r] [-m custom_mdp.mdp
    - Production MD run with GPU acceleration
    - Energy calculations
    - Interaction energy analysis between specified groups
+   - Buried surface area (BSA) between the two groups via `gmx sasa` (BSA = SASA_group1 + SASA_group2 - SASA_complex)
 
 ## Important Notes
 
@@ -86,6 +89,12 @@ sbatch run_full_gromacs_flow.sh protein_A run1 -s
 # Continuing with a custom GRO file
 sbatch run_full_gromacs_flow.sh protein_A run1 -r -g path/to/custom.gro
 
+# Forming specific disulphides (answers fed to pdb2gmx -ss prompts)
+sbatch run_full_gromacs_flow.sh protein_A run1 -d 'y n y'
+
+# Choosing termini (NH3+/COO- on chains 1 and 3, NH3+/CT2 on chains 2 and 4)
+sbatch run_full_gromacs_flow.sh protein_A run1 -c '0 0 0 2 0 0 0 2'
+
 # Extending simulation with modified parameters
 sbatch run_full_gromacs_flow.sh protein_A run1 -r -t
 sbatch run_full_gromacs_flow.sh protein_A run1 -r -t -m extended_md.mdp
@@ -104,6 +113,7 @@ The script provides several options to control the workflow:
 
 The script generates several important output files:
 - `interaction_energy.xvg`: Contains Coulomb and Lennard-Jones interaction energies between specified groups
+- `interaction_surface_area.xvg`: Per-frame buried surface area (BSA) and interface area (BSA/2); intermediate `sasa_*.xvg` files are also written
 - `md_0_1.xtc`: Trajectory file
 - `md_0_1.gro`: Final structure
 - Various energy and analysis files (temperature.xvg, pressure.xvg, density.xvg)
