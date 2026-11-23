@@ -165,6 +165,14 @@ nvidia-smi --query-gpu=index,name,driver_version --format=csv,noheader
 # This needs to be changed to the correct gromacs version for the cluster.
 module load gromacs/2026.1
 
+# Cluster provides the MPI build as gmx_mpi (not thread-MPI gmx).
+# Flip to GMX=gmx on machines that ship the non-MPI binary instead.
+GMX=gmx_mpi
+if ! command -v "$GMX" >/dev/null 2>&1; then
+    echo "Error: '$GMX' not found after module load. Check the module name or GMX setting."
+    exit 1
+fi
+
 # Switched to using docker image of more recent gromacs version, due to old version
 # only seemingly being able to do one restraint at a time.
 # mpirun used instead of srun to avoid compatibility issues with the mpi
@@ -253,10 +261,10 @@ else
 
         # TIP3P water model is more appropriate with CHARMM36 force field.
         if [ -n "$pdb2gmx_answers" ]; then
-            echo "$pdb2gmx_answers" | gmx pdb2gmx "${pdb2gmx_args[@]}" 2> pdb2gmx_error.log
+            echo "$pdb2gmx_answers" | "$GMX" pdb2gmx "${pdb2gmx_args[@]}" 2> pdb2gmx_error.log
             pdb2gmx_status=${PIPESTATUS[1]}
         else
-            gmx pdb2gmx "${pdb2gmx_args[@]}" 2> pdb2gmx_error.log
+            "$GMX" pdb2gmx "${pdb2gmx_args[@]}" 2> pdb2gmx_error.log
             pdb2gmx_status=$?
         fi
         if [ "$pdb2gmx_status" -ne 0 ]; then
@@ -283,11 +291,11 @@ else
 
     # 1.2 nm of clearance puts at least 2.4 nm between the protein and its
     # periodic image, outside the 1.2 nm CHARMM cutoff.
-    gmx editconf -f "$structure_gro" -o struc_newbox.gro -c -d 1.2 -bt cubic
+    "$GMX" editconf -f "$structure_gro" -o struc_newbox.gro -c -d 1.2 -bt cubic
 
     # Solvate.
     echo "Solvating..."
-    gmx solvate -cp struc_newbox.gro -cs spc216.gro -o struc_solv.gro -p topol.top 2> solvate_error.log
+    "$GMX" solvate -cp struc_newbox.gro -cs spc216.gro -o struc_solv.gro -p topol.top 2> solvate_error.log
     if [ $? -ne 0 ]; then
          echo "Solvation failed. Check $run_dir/solvate_error.log for details."
          exit 1
@@ -295,14 +303,14 @@ else
 
     # Add ions.
     echo "Adding ions..."
-    gmx grompp -f ions.mdp -c struc_solv.gro -p topol.top -o ions.tpr 2> ions_grompp_error.log
+    "$GMX" grompp -f ions.mdp -c struc_solv.gro -p topol.top -o ions.tpr 2> ions_grompp_error.log
     if [ $? -ne 0 ]; then
          echo "grompp for ions failed. Check $run_dir/ions_grompp_error.log for details."
          exit 1
     fi
     # -neutral cancels the protein charge; -conc adds NaCl pairs on top
     # of that until the solvent is 0.15 mol/L.
-    echo "SOL" | gmx genion -s ions.tpr \
+    echo "SOL" | "$GMX" genion -s ions.tpr \
                           -o struc_solv_ions.gro \
                           -p topol.top \
                           -pname NA -nname CL -neutral -conc 0.15 2> genion_error.log
@@ -313,9 +321,9 @@ else
 
     # Energy minimization.
     echo "Energy minimization..."
-    gmx grompp -f minim.mdp -c struc_solv_ions.gro -p topol.top -o em.tpr
-    gmx mdrun -v -deffnm em -s em.tpr -ntmpi 1
-    echo "Potential" | gmx energy -f em.edr -o potential.xvg
+    "$GMX" grompp -f minim.mdp -c struc_solv_ions.gro -p topol.top -o em.tpr
+    "$GMX" mdrun -v -deffnm em -s em.tpr -ntmpi 1
+    echo "Potential" | "$GMX" energy -f em.edr -o potential.xvg
     if [ $? -ne 0 ]; then
          echo "Energy minimization failed."
          exit 1
@@ -323,9 +331,9 @@ else
 
     # NVT equilibration.
     echo "Temperature equilibration..."
-    gmx grompp -f nvt.mdp -c em.gro -r em.gro -p topol.top -o nvt.tpr
-    gmx mdrun -deffnm nvt -s nvt.tpr -ntmpi 1 -ntomp 16
-    echo "Temperature" | gmx energy -f nvt.edr -o temperature.xvg
+    "$GMX" grompp -f nvt.mdp -c em.gro -r em.gro -p topol.top -o nvt.tpr
+    "$GMX" mdrun -deffnm nvt -s nvt.tpr -ntmpi 1 -ntomp 16
+    echo "Temperature" | "$GMX" energy -f nvt.edr -o temperature.xvg
     if [ $? -ne 0 ]; then
          echo "NVT equilibration failed."
          exit 1
@@ -333,11 +341,11 @@ else
 
     # NPT equilibration (with modified npt.mdp without positional restraints).
     echo "Pressure equilibration..."
-    gmx grompp -f npt.mdp -c nvt.gro -r nvt.gro -t nvt.cpt \
+    "$GMX" grompp -f npt.mdp -c nvt.gro -r nvt.gro -t nvt.cpt \
               -p topol.top -o npt.tpr
-    gmx mdrun -deffnm npt -s npt.tpr -ntmpi 1 -ntomp 16
-    echo "Pressure" | gmx energy -f npt.edr -o pressure.xvg
-    echo "Density" | gmx energy -f npt.edr -o density.xvg
+    "$GMX" mdrun -deffnm npt -s npt.tpr -ntmpi 1 -ntomp 16
+    echo "Pressure" | "$GMX" energy -f npt.edr -o pressure.xvg
+    echo "Density" | "$GMX" energy -f npt.edr -o density.xvg
     if [ $? -ne 0 ]; then
          echo "NPT equilibration failed."
          exit 1
@@ -364,13 +372,13 @@ run_production() {
                  exit 1
              fi
 
-             gmx grompp -f "$production_mdp" -c npt.gro -t npt.cpt -p topol.top -n "$index_file" -o md_0_1.tpr
+             "$GMX" grompp -f "$production_mdp" -c npt.gro -t npt.cpt -p topol.top -n "$index_file" -o md_0_1.tpr
          fi
          echo "Resuming production MD from checkpoint. See readout at $run_dir/md_0_1_error.log"
          # Execute the production run with pullx and pullf files if they exist.
          # For some reason omitting this only gives an error when a run is resumed.
          if [ -f "md_0_1_pullx.xvg" ] && [ -f "md_0_1_pullf.xvg" ]; then
-              gmx mdrun -deffnm md_0_1 \
+              "$GMX" mdrun -deffnm md_0_1 \
                         -s md_0_1.tpr \
                         -cpi md_0_1.cpt \
                         -px md_0_1_pullx.xvg \
@@ -380,7 +388,7 @@ run_production() {
                         -pme gpu \
                         -v -stepout 10000 2> md_0_1_error.log
          else
-              gmx mdrun -deffnm md_0_1 \
+              "$GMX" mdrun -deffnm md_0_1 \
                         -s md_0_1.tpr \
                         -cpi md_0_1.cpt \
                         -ntmpi 1 -ntomp 16 \
@@ -401,7 +409,7 @@ run_production() {
              echo "To identify chains:"
              echo "> grep -v SOL $run_dir/npt.gro | grep CA"
              echo "To create index file:"
-             echo "> gmx make_ndx -f $run_dir/npt.gro -o index.ndx"
+             echo "> $GMX make_ndx -f $run_dir/npt.gro -o index.ndx"
              echo "To resume the workflow:"
              echo "> sbatch run_full_gromacs_flow.sh $input_file $indicator -r"
              echo "----------------------------------------"
@@ -411,10 +419,10 @@ run_production() {
              echo "Index file '$index_file' found. Proceeding with production run."
          fi
          # Create the production run TPR.
-         gmx grompp -f "$production_mdp" -c npt.gro -t npt.cpt -p topol.top -n "$index_file" -o md_0_1.tpr
+         "$GMX" grompp -f "$production_mdp" -c npt.gro -t npt.cpt -p topol.top -n "$index_file" -o md_0_1.tpr
          # Execute production run
          echo "Executing production run. See readout at $run_dir/md_0_1_error.log"
-         gmx mdrun -deffnm md_0_1 \
+         "$GMX" mdrun -deffnm md_0_1 \
                    -s md_0_1.tpr \
                    -ntmpi 1 -ntomp 16 \
                    -nb gpu \
@@ -427,10 +435,10 @@ run_production() {
     fi
 
     # Energy calculation steps.
-    gmx grompp -f md_energy.mdp -c md_0_1.gro \
+    "$GMX" grompp -f md_energy.mdp -c md_0_1.gro \
               -p topol.top -o md_0_1_energy.tpr -n "$index_file"
     echo "Executing energy calculation. See readout at $run_dir/md_0_1_energy.log"
-    gmx mdrun -s md_0_1_energy.tpr \
+    "$GMX" mdrun -s md_0_1_energy.tpr \
               -rerun md_0_1.xtc \
               -deffnm md_0_1_energy \
               -ntmpi 1 -nb cpu 2> md_0_1_energy.log
@@ -452,20 +460,20 @@ run_production() {
 
     echo "Extracting interaction energy."
     echo -e "Coul-SR:${group1}-${group2}\nLJ-SR:${group1}-${group2}" | \
-    gmx energy -f md_0_1_energy.edr -o interaction_energy.xvg
+    "$GMX" energy -f md_0_1_energy.edr -o interaction_energy.xvg
 
     echo "Calculating interaction surface area (buried surface area / BSA)."
     # SASA is computed for each binding partner in isolation and for the
     # complex. gmx sasa ignores atoms outside the -surface selection, so the
     # two single-partner runs report free-state SASA. The buried (interface)
     # surface area then follows from BSA = SASA_1 + SASA_2 - SASA_complex.
-    gmx sasa -f md_0_1.xtc -s md_0_1_energy.tpr -n "$index_file" \
+    "$GMX" sasa -f md_0_1.xtc -s md_0_1_energy.tpr -n "$index_file" \
              -surface "group \"$group1\"" \
              -o "sasa_${group1}.xvg" 2> "sasa_${group1}.log"
-    gmx sasa -f md_0_1.xtc -s md_0_1_energy.tpr -n "$index_file" \
+    "$GMX" sasa -f md_0_1.xtc -s md_0_1_energy.tpr -n "$index_file" \
              -surface "group \"$group2\"" \
              -o "sasa_${group2}.xvg" 2> "sasa_${group2}.log"
-    gmx sasa -f md_0_1.xtc -s md_0_1_energy.tpr -n "$index_file" \
+    "$GMX" sasa -f md_0_1.xtc -s md_0_1_energy.tpr -n "$index_file" \
              -surface "group \"$group1\" or group \"$group2\"" \
              -o "sasa_complex.xvg" 2> "sasa_complex.log"
 

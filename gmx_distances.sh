@@ -9,6 +9,13 @@
 
 module load gromacs/2026.1
 
+# Cluster provides the MPI build as gmx_mpi (not thread-MPI gmx).
+GMX=gmx_mpi
+if ! command -v "$GMX" >/dev/null 2>&1; then
+    echo "Error: '$GMX' not found after module load. Check the module name or GMX setting."
+    exit 1
+fi
+
 set -o pipefail
 
 # Measure pairwise distances between all *custom* (user-defined) index groups
@@ -77,7 +84,7 @@ is_derived_traj() {
 
 # Return the number of coordinate frames in a trajectory, or empty on failure.
 count_traj_frames() {
-    gmx check -f "$1" 2>&1 | awk '/^Coords/{print $2; exit}'
+    "$GMX" check -f "$1" 2>&1 | awk '/^Coords/{print $2; exit}'
 }
 
 # Find all trajectories in subdirectories, or expand the -f patterns.
@@ -189,7 +196,7 @@ process_traj() {
     src_frames=$(count_traj_frames "$traj")
     if [ -z "$src_frames" ] || [ "$src_frames" -eq 0 ]; then
         echo " Skipping $traj: unreadable or empty (gmx check reports 0 frames)."
-        echo " Run: gmx check -f $traj"
+        echo " Run: $GMX check -f $traj"
         return
     fi
     echo " Source trajectory: $src_frames frames"
@@ -203,7 +210,7 @@ process_traj() {
     dt_opt=()
     if [ "$max_frames" -gt 0 ]; then
         # Pull dt (ps/step), nsteps, and the xtc write interval from the .tpr.
-        read -r dt nsteps nstout < <(gmx dump -s "$tpr" 2>/dev/null | awk '
+        read -r dt nsteps nstout < <("$GMX" dump -s "$tpr" 2>/dev/null | awk '
             /^[[:space:]]*dt[[:space:]]*=/                 {dt=$NF}
             /^[[:space:]]*nsteps[[:space:]]*=/             {ns=$NF}
             /(nstxout-compressed|nstxtcout)[[:space:]]*=/  {no=$NF}
@@ -249,7 +256,7 @@ process_traj() {
         echo "Centering on group $center_group with trjconv (-pbc mol -center)..."
         # trjconv prompts, in order: centering group, output group.
         if ! printf '%s\n%s\n' "$center_group" "0" \
-            | gmx trjconv -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
+            | "$GMX" trjconv -f "$traj" -s "$tpr" -n "$index_file" "${dt_opt[@]}" \
                 -pbc mol -center -ur compact -o "$centered"; then
             echo " trjconv failed; skipping $traj."
             echo " (Does group $center_group exist in $index_file?)"
@@ -261,7 +268,7 @@ process_traj() {
         if [ -z "$centered_frames" ] || [ "$centered_frames" -eq 0 ]; then
             echo " trjconv produced $centered but it has 0 readable frames."
             echo " The source trajectory may be corrupt."
-            echo " Run: gmx check -f $traj   and   gmx check -f $centered"
+            echo " Run: $GMX check -f $traj   and   $GMX check -f $centered"
             rm -f "$centered"
             return
         fi
@@ -271,7 +278,7 @@ process_traj() {
     echo "Running gmx distance..."
     # whole_mol_com: COM from intact molecules; -pbc/-rmpbc: minimum-image distances.
     # When centering was skipped, subsampling -dt is passed here instead of via trjconv.
-    if ! gmx distance -f "$distance_traj" -s "$tpr" -n "$index_file" \
+    if ! "$GMX" distance -f "$distance_traj" -s "$tpr" -n "$index_file" \
         "${distance_dt_opt[@]}" \
         -seltype whole_mol_com -selrpos whole_mol_com -pbc -rmpbc \
         -select "$select_str" -oall results/distance_${out_base}_${index_file%.ndx}.xvg; then
